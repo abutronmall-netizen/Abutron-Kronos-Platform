@@ -6,8 +6,8 @@ from decimal import Decimal
 from app.models import BotTier
 
 MIN_EQUITY = Decimal("20.00")
-FLIPPER_MAX = Decimal("3000.00")
-SCALPER_MAX = Decimal("5000.00")
+FLIPPER_MAX = Decimal("3000.99")
+SCALPER_MAX = Decimal("5000.99")
 MASTER_MAX = Decimal("10000.00")
 
 
