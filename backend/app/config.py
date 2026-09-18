@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     push_gateway_url: str = ""
     push_gateway_token: str = "development-push-token"
 
+    billing_webhook_secret: str = "development-billing-webhook-secret-change-me"
+
     auto_create_schema: bool = False
     cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:3000",
@@ -46,11 +48,11 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    @field_validator("jwt_secret")
+    @field_validator("jwt_secret", "billing_webhook_secret")
     @classmethod
-    def validate_jwt_secret(cls, value: str) -> str:
+    def validate_secret_length(cls, value: str) -> str:
         if len(value) < 32:
-            raise ValueError("ABUTRON_JWT_SECRET must be at least 32 characters")
+            raise ValueError("Security secrets must be at least 32 characters")
         return value
 
 
