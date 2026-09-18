@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
+import httpx
 from sqlalchemy import select
 
 from app.db import SessionLocal
@@ -13,7 +14,7 @@ from app.models import (
     NotificationStatus,
     PushAttemptStatus,
 )
-from app.services.push import PushGatewayClient
+from app.services.push import PushDeliveryError, PushGatewayClient
 
 BATCH_SIZE = 25
 
@@ -60,7 +61,7 @@ async def process_once() -> int:
                     attempt.sent_at = datetime.now(UTC)
                     successes += 1
                     last_message_id = result.provider_message_id
-                except Exception as exc:
+                except (PushDeliveryError, httpx.HTTPError, ValueError) as exc:
                     attempt.status = PushAttemptStatus.FAILED
                     attempt.error = str(exc)[:2000]
 
