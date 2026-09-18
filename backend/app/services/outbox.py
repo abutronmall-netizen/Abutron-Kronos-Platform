@@ -5,7 +5,8 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import License, OutboxEvent, OutboxStatus, TradingAccount
+from app.models import BotTier, License, OutboxEvent, OutboxStatus, TradingAccount
+from app.services.bot_profiles import get_bot_profile
 from app.services.entitlements import license_allows_execution
 
 
@@ -24,12 +25,20 @@ async def enqueue_account_assignment(
         .order_by(OutboxEvent.created_at.desc())
     )
 
+    profile = (
+        get_bot_profile(account.bot_tier).to_payload()
+        if account.bot_tier != BotTier.INELIGIBLE
+        else None
+    )
+
     payload = {
+        "assignment_contract_version": 2,
         "account_id": str(account.id),
         "broker_login": account.broker_login,
         "bot_tier": account.bot_tier.value,
         "equity_usd": str(account.equity_usd),
         "enabled": license_allows_execution(license_record),
+        "strategy_profile": profile,
     }
 
     if pending is not None:
