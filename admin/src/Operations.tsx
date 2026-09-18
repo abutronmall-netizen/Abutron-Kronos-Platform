@@ -32,8 +32,8 @@ export default function Operations({customers,brokers,plans,onChanged}:Props){
     e.currentTarget.reset();
   }
 
-  async function referral(e:FormEvent<HTMLFormElement>, verified:boolean){
-    e.preventDefault(); const f=new FormData(e.currentTarget);
+  async function referral(form:HTMLFormElement, verified:boolean){
+    const f=new FormData(form);
     const customerId=String(f.get("customer_id")||""); const broker=String(f.get("broker_slug")||"");
     await run(()=>adminApi.verifyReferral(customerId,verified,verified?broker:null),verified?"Referral verified.":"Referral verification removed.");
   }
@@ -71,11 +71,11 @@ export default function Operations({customers,brokers,plans,onChanged}:Props){
       </section>
 
       <section className="panel"><div className="panel-heading"><h2>Broker referral</h2><span>70% discount control</span></div>
-        <form className="action-form" onSubmit={(e)=>referral(e,true)}>
+        <form className="action-form" onSubmit={(e)=>{e.preventDefault(); void referral(e.currentTarget,true)}}>
           <label>Customer<select name="customer_id" required>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name+" - "+c.email}</option>)}</select></label>
           <label>Broker<select name="broker_slug" required>{brokers.map(b=><option key={b.id} value={b.slug}>{b.display_name}</option>)}</select></label>
           <div className="form-actions"><button className="primary-button" disabled={busy||!customers.length||!brokers.length}>Verify</button>
-          <button type="button" className="secondary-button" disabled={busy||!customers.length} onClick={(e)=>{const form=(e.currentTarget.closest("form") as HTMLFormElement); void referral({preventDefault:()=>{},currentTarget:form} as FormEvent<HTMLFormElement>,false)}}>Remove</button></div>
+          <button type="button" className="secondary-button" disabled={busy||!customers.length} onClick={(e)=>{if(e.currentTarget.form) void referral(e.currentTarget.form,false)}}>Remove</button></div>
         </form>
       </section>
 
