@@ -107,21 +107,22 @@ Implemented in the first platform milestone:
 - license creation/reconciliation and admin activation state;
 - device registration for Android/iOS;
 - mobile bootstrap endpoint;
-- notification persistence model;
-- admin dashboard counters;
+- notification persistence, delivery attempts and customer read state;
+- admin dashboard counters and financial/audit views;
 - broker creation endpoint;
 - license administration;
 - audit trail;
+- signed provider-neutral billing webhook boundary with idempotent payment confirmation;
+- request correlation IDs and structured HTTP access logging;
 - Kronos execution boundary;
 - backend unit tests and GitHub Actions CI.
 
 ## Next production milestones
 
-1. Alembic migrations and production database lifecycle.
-2. Billing provider integration, plans, invoices and webhook reconciliation.
-3. FCM/APNs push delivery workers with retry/dead-letter handling.
-4. Concrete HFM/Headway/IC Markets/Pepperstone broker adapters.
-5. Full admin web UI.
-6. React Native mobile application against the mobile bootstrap contract.
-7. Live Kronos assignment event outbox with retries and idempotency.
-8. Monitoring, metrics, structured logging and alerting.
+1. Concrete payment-provider adapters on top of the signed webhook contract, plus invoice/refund reconciliation.
+2. FCM/APNs gateway implementation, invalid-token cleanup and retry/dead-letter policy.
+3. Concrete HFM/Headway/IC Markets/Pepperstone broker adapters.
+4. Full admin web UI against the existing admin API surface.
+5. React Native Android/iOS application against the mobile bootstrap contract.
+6. Metrics, dashboards, alerting and production SLOs.
+7. Backup/restore drills, secret rotation and deployment runbooks.

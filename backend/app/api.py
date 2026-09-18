@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,14 +22,17 @@ from app.models import (
     LicenseStatus,
     Notification,
     NotificationStatus,
+    Payment,
     Role,
     Subscription,
     TradingAccount,
 )
 from app.schemas import (
     AdminDashboardResponse,
+    AuditEventPublic,
     BillingPlanCreate,
     BillingPlanPublic,
+    BillingWebhookEvent,
     BrokerCreate,
     BrokerPublic,
     CustomerPublic,
@@ -65,6 +68,7 @@ from app.services.billing import confirm_payment, create_subscription
 from app.services.entitlements import reconcile_license
 from app.services.equity_router import select_bot
 from app.services.outbox import enqueue_account_assignment
+from app.services.webhooks import verify_signature
 
 settings = get_settings()
 router = APIRouter(prefix="/api/v1")
@@ -283,6 +287,23 @@ async def list_notifications(
     return list(notifications)
 
 
+@router.patch("/notifications/{notification_id}/read", response_model=NotificationPublic)
+async def mark_notification_read(
+    notification_id: uuid.UUID,
+    customer: Customer = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db),
+) -> Notification:
+    notification = await db.get(Notification, notification_id)
+    if notification is None or notification.customer_id != customer.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+
+    if notification.read_at is None:
+        notification.read_at = datetime.now(UTC)
+        await db.commit()
+        await db.refresh(notification)
+    return notification
+
+
 @router.get("/mobile/bootstrap", response_model=MobileBootstrapResponse)
 async def mobile_bootstrap(
     customer: Customer = Depends(get_current_customer),
@@ -413,6 +434,72 @@ async def payment_confirmed(
     return payment
 
 
+@router.post("/webhooks/billing/{provider}", response_model=PaymentPublic)
+async def billing_webhook(
+    provider: str,
+    request: Request,
+    x_abutron_signature: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> Payment:
+    raw_body = await request.body()
+    if not verify_signature(settings.billing_webhook_secret, raw_body, x_abutron_signature):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook signature")
+
+    try:
+        event = BillingWebhookEvent.model_validate_json(raw_body)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook payload") from exc
+
+    provider_name = provider.strip().lower()
+    if not provider_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provider is required")
+
+    subscription = await db.get(Subscription, event.subscription_id)
+    if subscription is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
+    if subscription.provider.strip().lower() != provider_name:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Webhook provider does not match subscription provider",
+        )
+
+    try:
+        payment = await confirm_payment(
+            db,
+            subscription=subscription,
+            provider=provider_name,
+            provider_event_id=event.event_id,
+            amount_minor=event.amount_minor,
+            currency=event.currency,
+            raw_event=event.model_dump(mode="json"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    license_record = await db.get(License, subscription.license_id)
+    if license_record is not None:
+        account = await db.get(TradingAccount, license_record.trading_account_id)
+        if account is not None:
+            await enqueue_account_assignment(db, account, license_record)
+
+    db.add(
+        AuditEvent(
+            action="billing_webhook_confirmed",
+            entity_type="subscription",
+            entity_id=str(subscription.id),
+            payload={
+                "provider": provider_name,
+                "provider_event_id": event.event_id,
+                "amount_minor": event.amount_minor,
+                "currency": event.currency.upper(),
+            },
+        )
+    )
+    await db.commit()
+    await db.refresh(payment)
+    return payment
+
+
 @router.get("/admin/dashboard", response_model=AdminDashboardResponse)
 async def admin_dashboard(
     _: Customer = Depends(require_admin),
@@ -481,6 +568,37 @@ async def admin_licenses(
 ) -> list[License]:
     licenses = await db.scalars(select(License).order_by(License.created_at.desc()).limit(500))
     return list(licenses)
+
+
+@router.get("/admin/subscriptions", response_model=list[SubscriptionPublic])
+async def admin_subscriptions(
+    _: Customer = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[Subscription]:
+    subscriptions = await db.scalars(
+        select(Subscription).order_by(Subscription.created_at.desc()).limit(500)
+    )
+    return list(subscriptions)
+
+
+@router.get("/admin/payments", response_model=list[PaymentPublic])
+async def admin_payments(
+    _: Customer = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[Payment]:
+    payments = await db.scalars(select(Payment).order_by(Payment.created_at.desc()).limit(500))
+    return list(payments)
+
+
+@router.get("/admin/audit-events", response_model=list[AuditEventPublic])
+async def admin_audit_events(
+    _: Customer = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[AuditEvent]:
+    events = await db.scalars(
+        select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(500)
+    )
+    return list(events)
 
 
 @router.post(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -192,6 +193,25 @@ class PaymentPublic(ORMModel):
     paid_at: datetime | None
 
 
+class BillingWebhookEvent(BaseModel):
+    subscription_id: uuid.UUID
+    event_id: str = Field(min_length=2, max_length=255)
+    amount_minor: int = Field(gt=0)
+    currency: str = Field(min_length=3, max_length=3)
+    status: Literal["paid"]
+    data: dict = Field(default_factory=dict)
+
+
+class AuditEventPublic(ORMModel):
+    id: uuid.UUID
+    actor_customer_id: uuid.UUID | None
+    action: str
+    entity_type: str
+    entity_id: str | None
+    payload: dict
+    created_at: datetime
+
+
 class NotificationCreate(BaseModel):
     customer_id: uuid.UUID
     title: str = Field(min_length=1, max_length=180)
@@ -208,6 +228,7 @@ class NotificationPublic(ORMModel):
     status: NotificationStatus
     created_at: datetime
     sent_at: datetime | None
+    read_at: datetime | None
 
 
 class MobileBootstrapResponse(BaseModel):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "abutron-platform"
-version = "0.2.0"
+version = "2.42.0"
 description = "Abutron customer, admin, licensing and mobile gateway"
 requires-python = ">=3.12"
 dependencies = [
