@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -168,7 +168,7 @@ async def register_device(
     db: AsyncSession = Depends(get_db),
 ) -> Device:
     device = await db.scalar(select(Device).where(Device.device_id == request.device_id))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if device is not None and device.customer_id != customer.id:
         raise HTTPException(
@@ -247,7 +247,7 @@ async def sync_equity(
     account.bot_tier = decision.tier
     account.route_reason = decision.reason
     account.status = request.account_status
-    account.last_synced_at = datetime.now(timezone.utc)
+    account.last_synced_at = datetime.now(UTC)
 
     await reconcile_license(db, account, decision)
     db.add(
@@ -364,7 +364,7 @@ async def update_license_status(
     previous = license_record.status
     license_record.status = request.status
     if request.status == LicenseStatus.ACTIVE and license_record.starts_at is None:
-        license_record.starts_at = datetime.now(timezone.utc)
+        license_record.starts_at = datetime.now(UTC)
 
     db.add(
         AuditEvent(
