@@ -10,6 +10,7 @@ from sqlalchemy import or_, select
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import BotTier, OutboxEvent, OutboxStatus
+from app.services.bot_profiles import get_bot_profile
 from app.services.kronos import KronosAssignment, KronosExecutionClient
 
 MAX_ATTEMPTS = 10
@@ -51,18 +52,28 @@ async def process_once() -> int:
                     raise ValueError(f"Unsupported outbox event: {event.event_type}")
 
                 payload = event.payload
+                tier = BotTier(payload["bot_tier"])
+                profile = payload.get("strategy_profile")
+
+                # Backward compatibility for v1 queued assignments. The worker reconstructs
+                # the canonical profile from the assigned tier instead of failing old events.
+                if profile is None and tier != BotTier.INELIGIBLE:
+                    profile = get_bot_profile(tier).to_payload()
+
                 assignment = KronosAssignment(
                     broker_login=payload["broker_login"],
-                    tier=BotTier(payload["bot_tier"]),
+                    tier=tier,
                     equity_usd=Decimal(payload["equity_usd"]),
                     enabled=bool(payload["enabled"]),
+                    strategy_profile=profile,
+                    contract_version=int(payload.get("assignment_contract_version", 1)),
                 )
                 await client.apply_assignment(assignment)
 
                 event.status = OutboxStatus.SENT
                 event.sent_at = datetime.now(UTC)
                 event.last_error = None
-            except (httpx.HTTPError, InvalidOperation, KeyError, ValueError) as exc:
+            except (httpx.HTTPError, InvalidOperation, KeyError, TypeError, ValueError) as exc:
                 event.attempts += 1
                 event.last_error = str(exc)[:2000]
                 if event.attempts >= MAX_ATTEMPTS:
