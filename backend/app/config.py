@@ -1,7 +1,9 @@
 from functools import lru_cache
 
 from pydantic import field_validator
-from typing import Annotated\n\nfrom pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from typing import Annotated
+
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
