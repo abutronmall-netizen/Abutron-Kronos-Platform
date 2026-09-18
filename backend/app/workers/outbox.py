@@ -34,6 +34,7 @@ async def process_once() -> int:
                 )
                 .order_by(OutboxEvent.created_at)
                 .limit(BATCH_SIZE)
+                .with_for_update(skip_locked=True)
             )
         )
 
