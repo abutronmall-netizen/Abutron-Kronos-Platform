@@ -13,6 +13,7 @@ from app.db import get_db
 from app.models import (
     AccountStatus,
     AuditEvent,
+    BillingPlan,
     Broker,
     Customer,
     Device,
@@ -21,10 +22,13 @@ from app.models import (
     Notification,
     NotificationStatus,
     Role,
+    Subscription,
     TradingAccount,
 )
 from app.schemas import (
     AdminDashboardResponse,
+    BillingPlanCreate,
+    BillingPlanPublic,
     BrokerCreate,
     BrokerPublic,
     CustomerPublic,
@@ -36,7 +40,14 @@ from app.schemas import (
     LicenseStatusUpdate,
     LoginRequest,
     MobileBootstrapResponse,
+    NotificationCreate,
+    NotificationPublic,
+    PaymentConfirmationRequest,
+    PaymentPublic,
+    ReferralVerificationUpdate,
     RegisterRequest,
+    SubscriptionCreate,
+    SubscriptionPublic,
     TokenResponse,
     TradingAccountCreate,
     TradingAccountPublic,
@@ -49,8 +60,10 @@ from app.security import (
     require_service_token,
     verify_password,
 )
+from app.services.billing import confirm_payment, create_subscription
 from app.services.entitlements import reconcile_license
 from app.services.equity_router import select_bot
+from app.services.outbox import enqueue_account_assignment
 
 settings = get_settings()
 router = APIRouter(prefix="/api/v1")
@@ -195,6 +208,80 @@ async def register_device(
     return device
 
 
+@router.get("/billing/plans", response_model=list[BillingPlanPublic])
+async def list_billing_plans(
+    _: Customer = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db),
+) -> list[BillingPlan]:
+    plans = await db.scalars(
+        select(BillingPlan)
+        .where(BillingPlan.is_active.is_(True))
+        .order_by(BillingPlan.price_minor)
+    )
+    return list(plans)
+
+
+@router.post(
+    "/billing/subscriptions",
+    response_model=SubscriptionPublic,
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_subscription(
+    request: SubscriptionCreate,
+    customer: Customer = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db),
+) -> Subscription:
+    license_record = await db.get(License, request.license_id)
+    if license_record is None or license_record.customer_id != customer.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="License not found")
+
+    plan = await db.get(BillingPlan, request.plan_id)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Billing plan not found")
+
+    try:
+        subscription = await create_subscription(
+            db,
+            customer=customer,
+            license_record=license_record,
+            plan=plan,
+            provider=request.provider.strip().lower(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    await db.commit()
+    await db.refresh(subscription)
+    return subscription
+
+
+@router.get("/billing/subscriptions", response_model=list[SubscriptionPublic])
+async def list_subscriptions(
+    customer: Customer = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db),
+) -> list[Subscription]:
+    subscriptions = await db.scalars(
+        select(Subscription)
+        .where(Subscription.customer_id == customer.id)
+        .order_by(Subscription.created_at.desc())
+    )
+    return list(subscriptions)
+
+
+@router.get("/notifications", response_model=list[NotificationPublic])
+async def list_notifications(
+    customer: Customer = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db),
+) -> list[Notification]:
+    notifications = await db.scalars(
+        select(Notification)
+        .where(Notification.customer_id == customer.id)
+        .order_by(Notification.created_at.desc())
+        .limit(100)
+    )
+    return list(notifications)
+
+
 @router.get("/mobile/bootstrap", response_model=MobileBootstrapResponse)
 async def mobile_bootstrap(
     customer: Customer = Depends(get_current_customer),
@@ -221,8 +308,8 @@ async def mobile_bootstrap(
         feature_flags={
             "android": True,
             "ios": True,
-            "push_notifications": False,
-            "billing": False,
+            "push_notifications": settings.push_gateway_enabled,
+            "billing": True,
             "live_kronos_assignment": settings.kronos_push_enabled,
         },
     )
@@ -249,7 +336,8 @@ async def sync_equity(
     account.status = request.account_status
     account.last_synced_at = datetime.now(UTC)
 
-    await reconcile_license(db, account, decision)
+    license_record = await reconcile_license(db, account, decision)
+    await enqueue_account_assignment(db, account, license_record)
     db.add(
         AuditEvent(
             action="equity_sync",
@@ -270,6 +358,58 @@ async def sync_equity(
         equity_usd=decision.equity_usd,
         reason=decision.reason,
     )
+
+
+@router.post(
+    "/internal/billing/payment-confirmed",
+    response_model=PaymentPublic,
+    dependencies=[Depends(require_service_token)],
+)
+async def payment_confirmed(
+    request: PaymentConfirmationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    subscription = await db.get(Subscription, request.subscription_id)
+    if subscription is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found"
+        )
+
+    try:
+        payment = await confirm_payment(
+            db,
+            subscription=subscription,
+            provider=request.provider.strip().lower(),
+            provider_event_id=request.provider_event_id,
+            amount_minor=request.amount_minor,
+            currency=request.currency,
+            raw_event=request.raw_event,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    license_record = await db.get(License, subscription.license_id)
+    if license_record is not None:
+        account = await db.get(TradingAccount, license_record.trading_account_id)
+        if account is not None:
+            await enqueue_account_assignment(db, account, license_record)
+
+    db.add(
+        AuditEvent(
+            action="payment_confirmed",
+            entity_type="subscription",
+            entity_id=str(subscription.id),
+            payload={
+                "provider": request.provider,
+                "provider_event_id": request.provider_event_id,
+                "amount_minor": request.amount_minor,
+                "currency": request.currency.upper(),
+            },
+        )
+    )
+    await db.commit()
+    await db.refresh(payment)
+    return payment
 
 
 @router.get("/admin/dashboard", response_model=AdminDashboardResponse)
@@ -313,6 +453,35 @@ async def admin_dashboard(
     )
 
 
+@router.get("/admin/customers", response_model=list[CustomerPublic])
+async def admin_customers(
+    _: Customer = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[Customer]:
+    customers = await db.scalars(select(Customer).order_by(Customer.created_at.desc()).limit(500))
+    return list(customers)
+
+
+@router.get("/admin/accounts", response_model=list[TradingAccountPublic])
+async def admin_accounts(
+    _: Customer = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[TradingAccount]:
+    accounts = await db.scalars(
+        select(TradingAccount).order_by(TradingAccount.created_at.desc()).limit(500)
+    )
+    return list(accounts)
+
+
+@router.get("/admin/licenses", response_model=list[LicensePublic])
+async def admin_licenses(
+    _: Customer = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[License]:
+    licenses = await db.scalars(select(License).order_by(License.created_at.desc()).limit(500))
+    return list(licenses)
+
+
 @router.post(
     "/admin/brokers",
     response_model=BrokerPublic,
@@ -350,6 +519,118 @@ async def create_broker(
     return broker
 
 
+@router.post(
+    "/admin/billing/plans",
+    response_model=BillingPlanPublic,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_billing_plan(
+    request: BillingPlanCreate,
+    admin: Customer = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> BillingPlan:
+    plan = BillingPlan(
+        code=request.code,
+        display_name=request.display_name.strip(),
+        product=request.product,
+        currency=request.currency.upper(),
+        price_minor=request.price_minor,
+        broker_discount_percent=request.broker_discount_percent,
+    )
+    db.add(plan)
+    db.add(
+        AuditEvent(
+            actor_customer_id=admin.id,
+            action="billing_plan_created",
+            entity_type="billing_plan",
+            entity_id=request.code,
+            payload={
+                "product": request.product.value,
+                "price_minor": request.price_minor,
+                "currency": request.currency.upper(),
+                "broker_discount_percent": request.broker_discount_percent,
+            },
+        )
+    )
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Billing plan code already exists",
+        ) from exc
+    await db.refresh(plan)
+    return plan
+
+
+@router.put("/admin/customers/{customer_id}/referral", response_model=CustomerPublic)
+async def verify_referral(
+    customer_id: uuid.UUID,
+    request: ReferralVerificationUpdate,
+    admin: Customer = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> Customer:
+    customer = await db.get(Customer, customer_id)
+    if customer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
+
+    customer.broker_referral_verified = request.verified
+    customer.broker_referral_slug = request.broker_slug if request.verified else None
+    db.add(
+        AuditEvent(
+            actor_customer_id=admin.id,
+            action="broker_referral_updated",
+            entity_type="customer",
+            entity_id=str(customer.id),
+            payload={
+                "verified": request.verified,
+                "broker_slug": customer.broker_referral_slug,
+            },
+        )
+    )
+    await db.commit()
+    await db.refresh(customer)
+    return customer
+
+
+@router.post(
+    "/admin/notifications",
+    response_model=NotificationPublic,
+    status_code=status.HTTP_201_CREATED,
+)
+async def queue_notification(
+    request: NotificationCreate,
+    admin: Customer = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> Notification:
+    customer = await db.get(Customer, request.customer_id)
+    if customer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
+
+    notification = Notification(
+        customer_id=customer.id,
+        title=request.title,
+        body=request.body,
+        data=request.data,
+        status=NotificationStatus.QUEUED,
+    )
+    db.add(notification)
+    await db.flush()
+    db.add(
+        AuditEvent(
+            actor_customer_id=admin.id,
+            action="notification_queued",
+            entity_type="notification",
+            entity_id=str(notification.id),
+            payload={"customer_id": str(customer.id), "title": notification.title},
+        )
+    )
+    await db.commit()
+    await db.refresh(notification)
+    return notification
+
+
 @router.put("/admin/licenses/{license_id}", response_model=LicensePublic)
 async def update_license_status(
     license_id: uuid.UUID,
@@ -365,6 +646,10 @@ async def update_license_status(
     license_record.status = request.status
     if request.status == LicenseStatus.ACTIVE and license_record.starts_at is None:
         license_record.starts_at = datetime.now(UTC)
+
+    account = await db.get(TradingAccount, license_record.trading_account_id)
+    if account is not None:
+        await enqueue_account_assignment(db, account, license_record)
 
     db.add(
         AuditEvent(
