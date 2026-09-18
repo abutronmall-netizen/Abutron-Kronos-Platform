@@ -85,6 +85,8 @@ async def confirm_payment(
             raise ValueError("Payment event is already linked to another subscription")
         return existing
 
+    if subscription.status == SubscriptionStatus.ACTIVE:
+        raise ValueError("Subscription is already paid")
     if subscription.status == SubscriptionStatus.CANCELLED:
         raise ValueError("Cancelled subscription cannot accept payment")
     if subscription.status == SubscriptionStatus.EXPIRED:
