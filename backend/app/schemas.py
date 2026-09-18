@@ -202,6 +202,11 @@ class BillingWebhookEvent(BaseModel):
     data: dict = Field(default_factory=dict)
 
 
+class AdminManualPaymentRequest(BaseModel):
+    provider: str = Field(default="manual-admin", min_length=2, max_length=80)
+    reference: str | None = Field(default=None, max_length=255)
+
+
 class AuditEventPublic(ORMModel):
     id: uuid.UUID
     actor_customer_id: uuid.UUID | None
