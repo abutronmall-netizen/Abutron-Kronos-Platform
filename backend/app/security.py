@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hmac
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from fastapi import Depends, Header, HTTPException, status
@@ -29,7 +29,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 def create_access_token(customer: Customer) -> tuple[str, int]:
     expires = timedelta(minutes=settings.access_token_minutes)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": str(customer.id),
         "role": customer.role.value,
