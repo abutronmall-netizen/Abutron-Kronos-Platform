@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
+import httpx
 from sqlalchemy import or_, select
 
 from app.config import get_settings
@@ -61,7 +62,7 @@ async def process_once() -> int:
                 event.status = OutboxStatus.SENT
                 event.sent_at = datetime.now(UTC)
                 event.last_error = None
-            except Exception as exc:
+            except (httpx.HTTPError, InvalidOperation, KeyError, ValueError) as exc:
                 event.attempts += 1
                 event.last_error = str(exc)[:2000]
                 if event.attempts >= MAX_ATTEMPTS:
