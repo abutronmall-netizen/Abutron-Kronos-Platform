@@ -24,6 +24,13 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8, max_length=200)
 
 
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=200)
+    full_name: str = Field(min_length=2, max_length=200)
+    phone: str | None = Field(default=None, max_length=50)
+
+
 class CustomerPublic(ORMModel):
     id: uuid.UUID
     email: EmailStr
@@ -39,6 +46,13 @@ class BrokerPublic(ORMModel):
     slug: str
     display_name: str
     is_active: bool
+
+
+class BrokerCreate(BaseModel):
+    slug: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,78}[a-z0-9]$")
+    display_name: str = Field(min_length=2, max_length=160)
+    adapter_key: str = Field(min_length=2, max_length=80)
+    api_base_url: str | None = Field(default=None, max_length=500)
 
 
 class TradingAccountPublic(ORMModel):
@@ -60,6 +74,10 @@ class LicensePublic(ORMModel):
     status: LicenseStatus
     starts_at: datetime | None
     expires_at: datetime | None
+
+
+class LicenseStatusUpdate(BaseModel):
+    status: LicenseStatus
 
 
 class TradingAccountCreate(BaseModel):
