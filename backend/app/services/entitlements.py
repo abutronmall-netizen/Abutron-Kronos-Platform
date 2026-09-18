@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,4 +46,4 @@ def license_allows_execution(license_record: License | None) -> bool:
         return False
     if license_record.expires_at is None:
         return True
-    return license_record.expires_at > datetime.now(timezone.utc)
+    return license_record.expires_at > datetime.now(UTC)
