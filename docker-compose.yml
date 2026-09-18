@@ -29,7 +29,7 @@ services:
       context: ./backend
     env_file:
       - .env
-    command: ["alembic", "upgrade", "head"]
+    command: ["sh", "-c", "alembic upgrade head && python -m app.bootstrap_catalog"]
     depends_on:
       postgres:
         condition: service_healthy
