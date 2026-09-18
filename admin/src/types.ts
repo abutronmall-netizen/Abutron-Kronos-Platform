@@ -81,3 +81,21 @@ export interface AuditEvent {
   payload: Record<string, unknown>;
   created_at: string;
 }
+
+export interface Broker {
+  id: string;
+  slug: string;
+  display_name: string;
+  is_active: boolean;
+}
+
+export interface BillingPlan {
+  id: string;
+  code: string;
+  display_name: string;
+  product: string;
+  currency: string;
+  price_minor: number;
+  broker_discount_percent: number;
+  is_active: boolean;
+}
