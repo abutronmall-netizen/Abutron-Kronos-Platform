@@ -70,5 +70,10 @@ export const adminApi = {
   licenses: () => request<License[]>("/admin/licenses"),
   subscriptions: () => request<Subscription[]>("/admin/subscriptions"),
   payments: () => request<Payment[]>("/admin/payments"),
-  audit: () => request<AuditEvent[]>("/admin/audit-events")
+  audit: () => request<AuditEvent[]>("/admin/audit-events"),
+  updateLicense: (licenseId: string, status: string) =>
+    request<License>(`/admin/licenses/${licenseId}`, {
+      method: "PUT",
+      body: JSON.stringify({ status })
+    })
 };
