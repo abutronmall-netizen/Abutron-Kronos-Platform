@@ -3,6 +3,7 @@ param(
   [string]$AdminName = "Abutron Administrator",
   [string]$PublicHost = "",
   [switch]$EnableKronosPush,
+  [switch]$EnableExpoPush,
   [switch]$Force
 )
 
@@ -52,7 +53,6 @@ $dbPassword = New-HexSecret 24
 $jwtSecret = New-HexSecret 48
 $serviceToken = New-HexSecret 48
 $engineToken = New-HexSecret 48
-$pushToken = New-HexSecret 48
 $billingSecret = New-HexSecret 48
 $pushEnabled = if ($EnableExpoPush) { "true" } else { "false" }
 $kronosEnabled = if ($EnableKronosPush) { "true" } else { "false" }
@@ -77,8 +77,8 @@ $lines = @(
   "ABUTRON_KRONOS_ENGINE_TOKEN=$engineToken",
   "ABUTRON_KRONOS_PUSH_ENABLED=$kronosEnabled",
   "ABUTRON_PUSH_GATEWAY_ENABLED=$pushEnabled",
-  "ABUTRON_PUSH_GATEWAY_URL=",
-  "ABUTRON_PUSH_GATEWAY_TOKEN=$pushToken",
+  "ABUTRON_PUSH_GATEWAY_URL=https://exp.host/--/api/v2/push/send",
+  "ABUTRON_PUSH_GATEWAY_TOKEN=",
   "ABUTRON_BILLING_WEBHOOK_SECRET=$billingSecret",
   "ABUTRON_AUTO_CREATE_SCHEMA=false",
   "ABUTRON_CORS_ORIGINS=$origin",
