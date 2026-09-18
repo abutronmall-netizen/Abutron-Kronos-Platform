@@ -1,0 +1,26 @@
+name: offline-bundle
+
+on:
+  push:
+    branches: ["production/v2.44.0-windows-release"]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write release metadata
+        run: |
+          echo "${GITHUB_SHA}" > RELEASE_COMMIT.txt
+          echo "Abutron Production v2.44.0 Windows offline source" > RELEASE_NAME.txt
+      - name: Upload full source tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: Abutron-Platform-v2.44.0-Full-Source
+          path: |
+            .
+            !.git
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
