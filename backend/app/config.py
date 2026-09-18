@@ -24,9 +24,14 @@ class Settings(BaseSettings):
     access_token_minutes: int = 30
 
     service_token: str = "development-service-token"
+
     kronos_engine_url: str = "http://127.0.0.1:8090"
     kronos_engine_token: str = "development-engine-token"
     kronos_push_enabled: bool = False
+
+    push_gateway_enabled: bool = False
+    push_gateway_url: str = ""
+    push_gateway_token: str = "development-push-token"
 
     auto_create_schema: bool = False
     cors_origins: Annotated[list[str], NoDecode] = [
