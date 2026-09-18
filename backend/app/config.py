@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     service_token: str = "development-service-token"
     kronos_engine_url: str = "http://127.0.0.1:8090"
     kronos_engine_token: str = "development-engine-token"
+    kronos_push_enabled: bool = False
 
     auto_create_schema: bool = False
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
