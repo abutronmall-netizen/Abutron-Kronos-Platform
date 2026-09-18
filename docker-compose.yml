@@ -24,6 +24,17 @@ services:
       timeout: 3s
       retries: 10
 
+  migrate:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build:
       context: ./backend
@@ -32,8 +43,34 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      postgres:
+      migrate:
+        condition: service_completed_successfully
+      redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  outbox-worker:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    command: ["python", "-m", "app.workers.outbox"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  notification-worker:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    command: ["python", "-m", "app.workers.notifications"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
