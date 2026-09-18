@@ -6,15 +6,20 @@ from decimal import Decimal
 
 from sqlalchemy import or_, select
 
+from app.config import get_settings
 from app.db import SessionLocal
 from app.models import BotTier, OutboxEvent, OutboxStatus
 from app.services.kronos import KronosAssignment, KronosExecutionClient
 
 MAX_ATTEMPTS = 10
 BATCH_SIZE = 50
+settings = get_settings()
 
 
 async def process_once() -> int:
+    if not settings.kronos_push_enabled:
+        return 0
+
     now = datetime.now(UTC)
     async with SessionLocal() as db:
         events = list(
