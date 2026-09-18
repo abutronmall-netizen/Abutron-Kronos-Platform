@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "development-only-change-me-please-32-chars"
     jwt_issuer: str = "abutron-platform"
     access_token_minutes: int = 30
+    refresh_token_days: int = 30
 
     service_token: str = "development-service-token"
 
