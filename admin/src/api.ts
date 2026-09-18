@@ -1,5 +1,7 @@
 import type {
   AdminDashboard,
+  BillingPlan,
+  Broker,
   AuditEvent,
   Customer,
   License,
@@ -71,6 +73,18 @@ export const adminApi = {
   subscriptions: () => request<Subscription[]>("/admin/subscriptions"),
   payments: () => request<Payment[]>("/admin/payments"),
   audit: () => request<AuditEvent[]>("/admin/audit-events"),
+  brokers: () => request<Broker[]>("/brokers"),
+  billingPlans: () => request<BillingPlan[]>("/billing/plans"),
+  createBroker: (payload: {slug:string;display_name:string;adapter_key:string;api_base_url?:string|null}) =>
+    request<Broker>("/admin/brokers", {method:"POST", body:JSON.stringify(payload)}),
+  verifyReferral: (customerId:string, verified:boolean, broker_slug?:string|null) =>
+    request<Customer>(`/admin/customers/${customerId}/referral`, {method:"PUT", body:JSON.stringify({verified,broker_slug:verified?broker_slug:null})}),
+  queueNotification: (payload:{customer_id:string;title:string;body:string;data?:Record<string,unknown>}) =>
+    request("/admin/notifications", {method:"POST", body:JSON.stringify({...payload,data:payload.data??{}})}),
+  createBillingPlan: (payload:{code:string;display_name:string;product:string;currency:string;price_minor:number;broker_discount_percent:number}) =>
+    request<BillingPlan>("/admin/billing/plans", {method:"POST", body:JSON.stringify(payload)}),
+  confirmSubscriptionPayment: (subscriptionId:string, reference?:string) =>
+    request<Payment>(`/admin/subscriptions/${subscriptionId}/confirm-payment`, {method:"POST", body:JSON.stringify({provider:"manual-admin",reference:reference||null})}),
   updateLicense: (licenseId: string, status: string) =>
     request<License>(`/admin/licenses/${licenseId}`, {
       method: "PUT",
