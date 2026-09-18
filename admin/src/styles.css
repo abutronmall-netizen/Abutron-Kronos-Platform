@@ -18,7 +18,7 @@ body {
     #07111f;
 }
 
-button, input { font: inherit; }
+button, input, select, textarea { font: inherit; }
 
 button { cursor: pointer; }
 
@@ -78,7 +78,9 @@ form { display: grid; gap: 1rem; margin-top: 1.8rem; }
 
 label { display: grid; gap: 0.5rem; color: #a9bad0; font-size: 0.87rem; }
 
-input {
+input,
+select,
+textarea {
   width: 100%;
   border: 1px solid #28415e;
   border-radius: 12px;
@@ -88,7 +90,10 @@ input {
   background: #0b1b2e;
 }
 
-input:focus { border-color: #3380ff; box-shadow: 0 0 0 3px rgba(51, 128, 255, 0.12); }
+input:focus, select:focus, textarea:focus { border-color: #3380ff; box-shadow: 0 0 0 3px rgba(51, 128, 255, 0.12); }
+
+select, textarea { background: #0b1b2e; color: #f6f9fd; }
+textarea { resize: vertical; }
 
 .primary-button,
 .secondary-button,
@@ -335,4 +340,25 @@ tbody tr:hover { background: rgba(29, 62, 95, 0.18); }
   .logout-button { margin-top: 1rem; }
   .topbar { align-items: flex-start; flex-direction: column; }
   .stat-grid, .health-grid { grid-template-columns: 1fr; }
+}
+
+.operations-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.action-form { margin-top: 0; }
+.form-actions { display: flex; gap: 0.7rem; align-items: center; }
+.form-actions .secondary-button { margin-left: 0; }
+.success-box {
+  border: 1px solid rgba(34, 209, 155, 0.35);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  color: #94f0d2;
+  background: rgba(20, 120, 92, 0.18);
+}
+
+@media (max-width: 900px) {
+  .operations-grid { grid-template-columns: 1fr; }
 }
