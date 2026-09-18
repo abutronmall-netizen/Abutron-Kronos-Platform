@@ -11,6 +11,7 @@ from app.api import router
 from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.models import Base
+from app.observability import RequestContextMiddleware
 
 settings = get_settings()
 
@@ -32,12 +33,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(RequestContextMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Abutron-Service-Token"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Abutron-Service-Token",
+        "X-Abutron-Signature",
+        "X-Request-ID",
+    ],
+    expose_headers=["X-Request-ID"],
 )
 
 app.include_router(router)
