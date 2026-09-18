@@ -6,7 +6,16 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.models import AccountStatus, BotTier, DevicePlatform, LicenseStatus, Role
+from app.models import (
+    AccountStatus,
+    BotTier,
+    DevicePlatform,
+    LicenseStatus,
+    NotificationStatus,
+    PaymentStatus,
+    Role,
+    SubscriptionStatus,
+)
 
 
 class ORMModel(BaseModel):
@@ -38,6 +47,8 @@ class CustomerPublic(ORMModel):
     phone: str | None
     role: Role
     is_active: bool
+    broker_referral_verified: bool
+    broker_referral_slug: str | None
     created_at: datetime
 
 
@@ -53,6 +64,11 @@ class BrokerCreate(BaseModel):
     display_name: str = Field(min_length=2, max_length=160)
     adapter_key: str = Field(min_length=2, max_length=80)
     api_base_url: str | None = Field(default=None, max_length=500)
+
+
+class ReferralVerificationUpdate(BaseModel):
+    verified: bool
+    broker_slug: str | None = Field(default=None, max_length=80)
 
 
 class TradingAccountPublic(ORMModel):
@@ -112,6 +128,86 @@ class DevicePublic(ORMModel):
     app_version: str | None
     is_active: bool
     last_seen_at: datetime
+
+
+class BillingPlanCreate(BaseModel):
+    code: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,78}[a-z0-9]$")
+    display_name: str = Field(min_length=2, max_length=160)
+    product: BotTier
+    currency: str = Field(default="ZAR", min_length=3, max_length=3)
+    price_minor: int = Field(gt=0)
+    broker_discount_percent: int = Field(default=70, ge=0, le=100)
+
+
+class BillingPlanPublic(ORMModel):
+    id: uuid.UUID
+    code: str
+    display_name: str
+    product: BotTier
+    currency: str
+    price_minor: int
+    broker_discount_percent: int
+    is_active: bool
+
+
+class SubscriptionCreate(BaseModel):
+    license_id: uuid.UUID
+    plan_id: uuid.UUID
+    provider: str = Field(default="manual", min_length=2, max_length=80)
+
+
+class SubscriptionPublic(ORMModel):
+    id: uuid.UUID
+    customer_id: uuid.UUID
+    license_id: uuid.UUID
+    plan_id: uuid.UUID
+    status: SubscriptionStatus
+    provider: str
+    provider_reference: str | None
+    amount_minor: int
+    currency: str
+    discount_percent: int
+    starts_at: datetime | None
+    renews_at: datetime | None
+    created_at: datetime
+
+
+class PaymentConfirmationRequest(BaseModel):
+    subscription_id: uuid.UUID
+    provider: str = Field(min_length=2, max_length=80)
+    provider_event_id: str = Field(min_length=2, max_length=255)
+    amount_minor: int = Field(gt=0)
+    currency: str = Field(min_length=3, max_length=3)
+    raw_event: dict = Field(default_factory=dict)
+
+
+class PaymentPublic(ORMModel):
+    id: uuid.UUID
+    subscription_id: uuid.UUID
+    provider: str
+    provider_event_id: str
+    amount_minor: int
+    currency: str
+    status: PaymentStatus
+    paid_at: datetime | None
+
+
+class NotificationCreate(BaseModel):
+    customer_id: uuid.UUID
+    title: str = Field(min_length=1, max_length=180)
+    body: str = Field(min_length=1, max_length=4000)
+    data: dict = Field(default_factory=dict)
+
+
+class NotificationPublic(ORMModel):
+    id: uuid.UUID
+    customer_id: uuid.UUID
+    title: str
+    body: str
+    data: dict
+    status: NotificationStatus
+    created_at: datetime
+    sent_at: datetime | None
 
 
 class MobileBootstrapResponse(BaseModel):
