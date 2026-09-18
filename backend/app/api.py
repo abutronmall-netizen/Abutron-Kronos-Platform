@@ -14,6 +14,7 @@ from app.models import (
     AccountStatus,
     AuditEvent,
     BillingPlan,
+    BotTier,
     Broker,
     Customer,
     Device,
@@ -529,6 +530,12 @@ async def create_billing_plan(
     admin: Customer = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> BillingPlan:
+    if request.product == BotTier.INELIGIBLE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ineligible is not a billable product",
+        )
+
     plan = BillingPlan(
         code=request.code,
         display_name=request.display_name.strip(),
