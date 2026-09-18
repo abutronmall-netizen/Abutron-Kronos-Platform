@@ -48,7 +48,7 @@ The assignment contract sends both `bot_tier` and the canonical `strategy_profil
 ## Architecture
 
 ```text
-Android / iOS / Web Admin
+Android / iOS / React Admin
           |
           v
    Abutron Platform API
@@ -82,6 +82,7 @@ docker compose exec api python -m app.bootstrap
 ```
 
 5. Development API documentation is available at `/docs`.
+6. The production admin console is available on port `3000` by default.
 
 ## Security defaults
 
@@ -109,6 +110,7 @@ Implemented in the first platform milestone:
 - mobile bootstrap endpoint;
 - notification persistence, delivery attempts and customer read state;
 - admin dashboard counters and financial/audit views;
+- React/TypeScript admin console with dashboard, customer/account/license/billing/audit views and license controls;
 - broker creation endpoint;
 - license administration;
 - audit trail;
@@ -122,7 +124,7 @@ Implemented in the first platform milestone:
 1. Concrete payment-provider adapters on top of the signed webhook contract, plus invoice/refund reconciliation.
 2. FCM/APNs gateway implementation, invalid-token cleanup and retry/dead-letter policy.
 3. Concrete HFM/Headway/IC Markets/Pepperstone broker adapters.
-4. Full admin web UI against the existing admin API surface.
+4. Extend the admin console with broker/referral/notification creation workflows and role-specific support tooling.
 5. React Native Android/iOS application against the mobile bootstrap contract.
 6. Metrics, dashboards, alerting and production SLOs.
 7. Backup/restore drills, secret rotation and deployment runbooks.
