@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 import httpx
 
@@ -17,6 +18,8 @@ class KronosAssignment:
     tier: BotTier
     equity_usd: Decimal
     enabled: bool
+    strategy_profile: dict[str, Any] | None = None
+    contract_version: int = 2
 
 
 class KronosExecutionClient:
@@ -32,10 +35,12 @@ class KronosExecutionClient:
 
     async def apply_assignment(self, assignment: KronosAssignment) -> dict:
         payload = {
+            "assignment_contract_version": assignment.contract_version,
             "broker_login": assignment.broker_login,
             "bot_tier": assignment.tier.value,
             "equity_usd": str(assignment.equity_usd),
             "enabled": assignment.enabled,
+            "strategy_profile": assignment.strategy_profile,
         }
         headers = {"X-Abutron-Engine-Token": self.token}
         async with httpx.AsyncClient(timeout=10.0) as client:
