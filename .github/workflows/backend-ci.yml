@@ -27,5 +27,11 @@ jobs:
       - name: Lint
         run: ruff check app tests
 
+      - name: Import application
+        run: python -c "from app.main import app; assert app.title"
+
+      - name: Validate migration SQL
+        run: alembic upgrade head --sql > /tmp/abutron-schema.sql
+
       - name: Test
         run: pytest -q
