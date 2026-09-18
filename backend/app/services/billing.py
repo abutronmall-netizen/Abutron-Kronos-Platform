@@ -18,6 +18,12 @@ from app.models import (
 )
 from app.services.pricing import discounted_amount
 
+CURRENT_SUBSCRIPTION_STATUSES = (
+    SubscriptionStatus.PENDING,
+    SubscriptionStatus.ACTIVE,
+    SubscriptionStatus.PAST_DUE,
+)
+
 
 async def create_subscription(
     db: AsyncSession,
@@ -31,6 +37,17 @@ async def create_subscription(
         raise ValueError("Billing plan is inactive")
     if plan.product != license_record.product:
         raise ValueError("Billing plan does not match the routed bot product")
+
+    existing = await db.scalar(
+        select(Subscription)
+        .where(
+            Subscription.license_id == license_record.id,
+            Subscription.status.in_(CURRENT_SUBSCRIPTION_STATUSES),
+        )
+        .order_by(Subscription.created_at.desc())
+    )
+    if existing is not None:
+        raise ValueError("License already has a current subscription")
 
     discount = plan.broker_discount_percent if customer.broker_referral_verified else 0
     amount = discounted_amount(plan.price_minor, discount)
@@ -64,8 +81,14 @@ async def confirm_payment(
         select(Payment).where(Payment.provider_event_id == provider_event_id)
     )
     if existing is not None:
+        if existing.subscription_id != subscription.id:
+            raise ValueError("Payment event is already linked to another subscription")
         return existing
 
+    if subscription.status == SubscriptionStatus.CANCELLED:
+        raise ValueError("Cancelled subscription cannot accept payment")
+    if subscription.status == SubscriptionStatus.EXPIRED:
+        raise ValueError("Expired subscription cannot accept payment")
     if amount_minor != subscription.amount_minor:
         raise ValueError("Payment amount does not match subscription amount")
     if currency.upper() != subscription.currency.upper():
