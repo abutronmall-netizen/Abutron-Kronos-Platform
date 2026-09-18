@@ -33,6 +33,18 @@ The automatic account router currently follows the approved Abutron bands:
 
 An equity match selects the product tier. It does **not** bypass licensing: a license must be active before execution is enabled.
 
+## Bot execution profiles
+
+Equity routing is deliberately separated from strategy behavior. The router chooses the tier; the tier resolves to a versioned strategy profile; licensing decides whether execution is enabled.
+
+| Product | Core style | Primary TF flow | Trade frequency |
+| --- | --- | --- | --- |
+| Flipper | Adaptive directional grid/basket | M15 / M5 -> M1 | High |
+| Scalper | Precision sniper scalping | M15 / M5 -> M1 | Medium/high |
+| Master | Day trading / Trend + SMC/ICT | H4 / H1 -> M15 -> M5 | Low/selective |
+
+The assignment contract sends both `bot_tier` and the canonical `strategy_profile` to Kronos. Profit figures used in product material are business targets only; they are not execution guarantees and are not used to force trading frequency or risk.
+
 ## Architecture
 
 ```text
