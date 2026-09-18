@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, JSON, Numeric, String, Text
@@ -11,7 +11,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -72,9 +72,9 @@ class Customer(Base):
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
-    trading_accounts: Mapped[list["TradingAccount"]] = relationship(back_populates="customer")
-    licenses: Mapped[list["License"]] = relationship(back_populates="customer")
-    devices: Mapped[list["Device"]] = relationship(back_populates="customer")
+    trading_accounts: Mapped[list[TradingAccount]] = relationship(back_populates="customer")
+    licenses: Mapped[list[License]] = relationship(back_populates="customer")
+    devices: Mapped[list[Device]] = relationship(back_populates="customer")
 
 
 class Broker(Base):
@@ -88,7 +88,7 @@ class Broker(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    trading_accounts: Mapped[list["TradingAccount"]] = relationship(back_populates="broker")
+    trading_accounts: Mapped[list[TradingAccount]] = relationship(back_populates="broker")
 
 
 class TradingAccount(Base):
@@ -108,7 +108,7 @@ class TradingAccount(Base):
     broker_login: Mapped[str] = mapped_column(String(120))
     server_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="USD")
-    equity_usd: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
+    equity_usd: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal(0))
     bot_tier: Mapped[BotTier] = mapped_column(
         Enum(BotTier, native_enum=False), default=BotTier.INELIGIBLE
     )
@@ -122,9 +122,9 @@ class TradingAccount(Base):
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
-    customer: Mapped["Customer"] = relationship(back_populates="trading_accounts")
-    broker: Mapped["Broker"] = relationship(back_populates="trading_accounts")
-    license: Mapped["License | None"] = relationship(
+    customer: Mapped[Customer] = relationship(back_populates="trading_accounts")
+    broker: Mapped[Broker] = relationship(back_populates="trading_accounts")
+    license: Mapped[License | None] = relationship(
         back_populates="trading_account", uselist=False
     )
 
@@ -154,8 +154,8 @@ class License(Base):
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
-    customer: Mapped["Customer"] = relationship(back_populates="licenses")
-    trading_account: Mapped["TradingAccount"] = relationship(back_populates="license")
+    customer: Mapped[Customer] = relationship(back_populates="licenses")
+    trading_account: Mapped[TradingAccount] = relationship(back_populates="license")
 
 
 class Device(Base):
@@ -174,7 +174,7 @@ class Device(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    customer: Mapped["Customer"] = relationship(back_populates="devices")
+    customer: Mapped[Customer] = relationship(back_populates="devices")
 
 
 class Notification(Base):
