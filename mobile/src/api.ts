@@ -1,4 +1,5 @@
 export type Account = { id:string; broker_login:string; server_name?:string|null; equity_usd:string|number; bot_tier:string; route_reason:string; status:string };
+export type Broker = { id:string; slug:string; display_name:string; is_active:boolean };
 export type License = { id:string; product:string; status:string; starts_at?:string|null; expires_at?:string|null };
 export type Bootstrap = { customer:{full_name:string;email:string;phone?:string|null;broker_referral_verified:boolean}; accounts:Account[]; licenses:License[]; feature_flags:Record<string,boolean> };
 export type Notice = { id:string; title:string; body:string; created_at:string; read_at?:string|null };
@@ -17,3 +18,6 @@ export const bootstrap=(token:string)=>req<Bootstrap>("/api/v1/mobile/bootstrap"
 export const notices=(token:string)=>req<Notice[]>("/api/v1/notifications",{},token);
 export const readNotice=(token:string,id:string)=>req<Notice>("/api/v1/notifications/"+encodeURIComponent(id)+"/read",{method:"PATCH"},token);
 export const device=(token:string,payload:object)=>req("/api/v1/devices",{method:"PUT",body:JSON.stringify(payload)},token);
+
+export const brokers=(token:string)=>req<Broker[]>("/api/v1/brokers",{},token);
+export const createAccount=(token:string,broker_id:string,broker_login:string,server_name:string)=>req<Account>("/api/v1/accounts",{method:"POST",body:JSON.stringify({broker_id,broker_login,server_name:server_name||null})},token);
