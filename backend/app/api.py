@@ -264,7 +264,12 @@ async def sync_equity(
         )
     )
     await db.commit()
-    return EquityDecisionPublic(**decision.__dict__)
+    return EquityDecisionPublic(
+        eligible=decision.eligible,
+        tier=decision.tier,
+        equity_usd=decision.equity_usd,
+        reason=decision.reason,
+    )
 
 
 @router.get("/admin/dashboard", response_model=AdminDashboardResponse)
