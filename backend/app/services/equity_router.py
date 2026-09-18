@@ -19,10 +19,10 @@ class EquityDecision:
     reason: str
 
 
-def select_bot(equity_usd: Decimal | int | float | str) -> EquityDecision:
+def select_bot(equity_usd: Decimal | float | str) -> EquityDecision:
     equity = Decimal(str(equity_usd)).quantize(Decimal("0.01"))
 
-    if equity < Decimal("0"):
+    if equity < Decimal(0):
         raise ValueError("equity_usd cannot be negative")
 
     if equity < MIN_EQUITY:
