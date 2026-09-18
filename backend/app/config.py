@@ -1,8 +1,7 @@
 from functools import lru_cache
-
-from pydantic import field_validator
 from typing import Annotated
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -30,7 +29,10 @@ class Settings(BaseSettings):
     kronos_push_enabled: bool = False
 
     auto_create_schema: bool = False
-    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000", "http://localhost:5173"]
+    cors_origins: Annotated[list[str], NoDecode] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ]
 
     @field_validator("cors_origins", mode="before")
     @classmethod
