@@ -29,6 +29,7 @@ from app.models import (
 )
 from app.schemas import (
     AdminDashboardResponse,
+    AdminManualPaymentRequest,
     AuditEventPublic,
     BillingPlanCreate,
     BillingPlanPublic,
@@ -579,6 +580,51 @@ async def admin_subscriptions(
         select(Subscription).order_by(Subscription.created_at.desc()).limit(500)
     )
     return list(subscriptions)
+
+
+@router.post("/admin/subscriptions/{subscription_id}/confirm-payment", response_model=PaymentPublic)
+async def admin_confirm_subscription_payment(
+    subscription_id: uuid.UUID,
+    request: AdminManualPaymentRequest,
+    admin: Customer = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> Payment:
+    subscription = await db.get(Subscription, subscription_id)
+    if subscription is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found")
+
+    event_id = request.reference or f"admin:{subscription.id}:{uuid.uuid4()}"
+    try:
+        payment = await confirm_payment(
+            db,
+            subscription=subscription,
+            provider=request.provider.strip().lower(),
+            provider_event_id=event_id,
+            amount_minor=subscription.amount_minor,
+            currency=subscription.currency,
+            raw_event={"source": "admin_console", "actor_customer_id": str(admin.id)},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    license_record = await db.get(License, subscription.license_id)
+    if license_record is not None:
+        account = await db.get(TradingAccount, license_record.trading_account_id)
+        if account is not None:
+            await enqueue_account_assignment(db, account, license_record)
+
+    db.add(
+        AuditEvent(
+            actor_customer_id=admin.id,
+            action="subscription_payment_confirmed_by_admin",
+            entity_type="subscription",
+            entity_id=str(subscription.id),
+            payload={"provider": request.provider, "provider_event_id": event_id},
+        )
+    )
+    await db.commit()
+    await db.refresh(payment)
+    return payment
 
 
 @router.get("/admin/payments", response_model=list[PaymentPublic])
