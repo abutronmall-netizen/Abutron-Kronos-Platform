@@ -1,9 +1,12 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { adminApi, clearToken, getToken, login } from "./api";
+import Operations from "./Operations";
 import type {
   AdminDashboard,
   AuditEvent,
+  BillingPlan,
+  Broker,
   Customer,
   License,
   Payment,
@@ -11,7 +14,7 @@ import type {
   TradingAccount
 } from "./types";
 
-type View = "overview" | "customers" | "accounts" | "licenses" | "billing" | "audit";
+type View = "overview" | "customers" | "accounts" | "licenses" | "billing" | "operations" | "audit";
 
 const EMPTY_DASHBOARD: AdminDashboard = {
   customers: 0,
@@ -63,6 +66,8 @@ export default function App() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [busy, setBusy] = useState(authenticated);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,7 +80,7 @@ export default function App() {
         throw new Error("Administrator role required.");
       }
 
-      const [nextDashboard, nextCustomers, nextAccounts, nextLicenses, nextSubscriptions, nextPayments, nextAudit] =
+      const [nextDashboard, nextCustomers, nextAccounts, nextLicenses, nextSubscriptions, nextPayments, nextAudit, nextBrokers, nextPlans] =
         await Promise.all([
           adminApi.dashboard(),
           adminApi.customers(),
@@ -83,7 +88,9 @@ export default function App() {
           adminApi.licenses(),
           adminApi.subscriptions(),
           adminApi.payments(),
-          adminApi.audit()
+          adminApi.audit(),
+          adminApi.brokers(),
+          adminApi.billingPlans()
         ]);
 
       setDashboard(nextDashboard);
@@ -93,6 +100,8 @@ export default function App() {
       setSubscriptions(nextSubscriptions);
       setPayments(nextPayments);
       setAudit(nextAudit);
+      setBrokers(nextBrokers);
+      setPlans(nextPlans);
       setAuthenticated(true);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unable to load admin data.";
@@ -140,6 +149,18 @@ export default function App() {
     }
   }
 
+  async function confirmPayment(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await adminApi.confirmSubscriptionPayment(id);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to confirm payment.");
+      setBusy(false);
+    }
+  }
+
   if (!authenticated) {
     return (
       <main className="login-shell">
@@ -175,6 +196,7 @@ export default function App() {
     ["accounts", "Trading accounts"],
     ["licenses", "Licenses"],
     ["billing", "Billing"],
+    ["operations", "Operations"],
     ["audit", "Audit trail"]
   ];
 
@@ -186,7 +208,7 @@ export default function App() {
             <div className="brand-mark small">A</div>
             <div>
               <strong>Abutron</strong>
-              <span>Admin v2.43</span>
+              <span>Admin v2.44</span>
             </div>
           </div>
           <nav>
@@ -277,8 +299,8 @@ export default function App() {
           <div className="stack">
             <section className="panel table-panel">
               <div className="panel-heading"><h2>Subscriptions</h2><span>{subscriptions.length} records</span></div>
-              <div className="table-scroll"><table><thead><tr><th>Provider</th><th>Status</th><th>Amount</th><th>Discount</th><th>Created</th></tr></thead>
-                <tbody>{subscriptions.map((subscription) => <tr key={subscription.id}><td>{subscription.provider}</td><td><Badge value={subscription.status} /></td><td>{money(subscription.amount_minor, subscription.currency)}</td><td>{subscription.discount_percent}%</td><td>{formatDate(subscription.created_at)}</td></tr>)}</tbody>
+              <div className="table-scroll"><table><thead><tr><th>Provider</th><th>Status</th><th>Amount</th><th>Discount</th><th>Created</th><th>Control</th></tr></thead>
+                <tbody>{subscriptions.map((subscription) => <tr key={subscription.id}><td>{subscription.provider}</td><td><Badge value={subscription.status} /></td><td>{money(subscription.amount_minor, subscription.currency)}</td><td>{subscription.discount_percent}%</td><td>{formatDate(subscription.created_at)}</td><td><button className="table-button" disabled={busy || subscription.status !== "pending"} onClick={() => void confirmPayment(subscription.id)}>Mark paid</button></td></tr>)}</tbody>
               </table></div>
             </section>
             <section className="panel table-panel">
@@ -288,6 +310,10 @@ export default function App() {
               </table></div>
             </section>
           </div>
+        )}
+
+        {view === "operations" && (
+          <Operations customers={customers} brokers={brokers} plans={plans} onChanged={load} />
         )}
 
         {view === "audit" && (
