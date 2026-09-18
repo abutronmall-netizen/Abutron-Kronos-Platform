@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Abutron Trading",
+    "slug": "abutron-trading",
+    "version": "2.44.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "abutron",
+    "ios": {"supportsTablet": true, "bundleIdentifier": "za.co.abutron.trading"},
+    "android": {"package": "za.co.abutron.trading"},
+    "plugins": ["expo-secure-store", "expo-notifications"],
+    "extra": {"eas": {"projectId": "REPLACE_WITH_EAS_PROJECT_ID"}}
+  }
+}
