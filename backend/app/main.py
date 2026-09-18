@@ -27,7 +27,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Abutron Kronos Platform",
-    version="2.42.0",
+    version="2.44.0",
     docs_url="/docs" if settings.env != "production" else None,
     redoc_url=None,
     lifespan=lifespan,
