@@ -582,6 +582,24 @@ async def verify_referral(
     if customer is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
 
+    if request.verified:
+        if not request.broker_slug:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Broker slug is required when verifying a referral",
+            )
+        broker = await db.scalar(
+            select(Broker).where(
+                Broker.slug == request.broker_slug,
+                Broker.is_active.is_(True),
+            )
+        )
+        if broker is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Referral broker is not active or does not exist",
+            )
+
     customer.broker_referral_verified = request.verified
     customer.broker_referral_slug = request.broker_slug if request.verified else None
     db.add(
