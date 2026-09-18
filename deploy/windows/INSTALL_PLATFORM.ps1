@@ -54,7 +54,7 @@ $serviceToken = New-HexSecret 48
 $engineToken = New-HexSecret 48
 $pushToken = New-HexSecret 48
 $billingSecret = New-HexSecret 48
-$pushEnabled = "false"
+$pushEnabled = if ($EnableExpoPush) { "true" } else { "false" }
 $kronosEnabled = if ($EnableKronosPush) { "true" } else { "false" }
 $origin = if ($PublicHost) { "https://$PublicHost" } else { "http://localhost:3000" }
 
