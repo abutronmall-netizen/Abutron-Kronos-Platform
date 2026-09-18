@@ -87,7 +87,7 @@ class TradingAccountCreate(BaseModel):
 
 
 class EquitySyncRequest(BaseModel):
-    equity_usd: Decimal = Field(ge=Decimal("0"))
+    equity_usd: Decimal = Field(ge=Decimal(0))
     account_status: AccountStatus = AccountStatus.ACTIVE
 
 
