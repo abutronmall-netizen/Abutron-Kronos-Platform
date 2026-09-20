@@ -23,10 +23,28 @@ class MT5FleetClient:
 
     async def verify(self, request: AgentStartRequest) -> MT5VerifyResult:
         payload = request.model_dump(mode="json", exclude={"requested_port"})
-        async with httpx.AsyncClient(timeout=45) as client:
-            response = await client.post(f"{self.base_url}/v1/verify", json=payload, headers=self._headers())
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.post(
+                    f"{self.base_url}/v1/verify",
+                    json=payload,
+                    headers=self._headers(),
+                )
+        except httpx.TimeoutException as exc:
+            raise MT5FleetClientError("MT5 verification timed out") from exc
+        except httpx.RequestError as exc:
+            raise MT5FleetClientError("MT5 fleet agent unavailable") from exc
+
         if response.status_code >= 400:
-            raise MT5FleetClientError(f"MT5 verification failed ({response.status_code})")
+            detail = ""
+            try:
+                detail = str(response.json().get("detail", "")).strip()
+            except Exception:
+                pass
+            suffix = f": {detail}" if detail else ""
+            raise MT5FleetClientError(
+                f"MT5 verification failed ({response.status_code}){suffix}"
+            )
         return MT5VerifyResult.model_validate(response.json())
 
     async def start(self, request: AgentStartRequest) -> AgentStartResponse:
