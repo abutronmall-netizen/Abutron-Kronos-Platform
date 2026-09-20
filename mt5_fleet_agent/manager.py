@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 
 import httpx
+import psutil
 
 from .dpapi import protect_for_current_user
 from .models import StartRequest
@@ -110,24 +111,148 @@ class FleetManager:
             except Exception:
                 pass
             time.sleep(0.5)
-        self.stop(session_id)
+        self.stop(
+            session_id,
+            trusted_process=process,
+        )
         raise FleetManagerError("MT5 session startup timed out")
 
-    def stop(self, session_id: str) -> dict:
+    def stop(
+        self,
+        session_id: str,
+        trusted_process: subprocess.Popen | None = None,
+    ) -> dict:
         item = self.store.get(session_id)
         if not item:
             raise FleetManagerError("MT5 session not found")
+
         pid = int(item.get("pid") or 0)
+
         if pid and self._pid_alive(pid):
+            trusted_spawn = (
+                trusted_process is not None
+                and trusted_process.pid == pid
+                and trusted_process.poll() is None
+            )
+
+            if (
+                not trusted_spawn
+                and not self._session_identity_verified(item)
+            ):
+                self.store.update_status(
+                    session_id,
+                    "error",
+                    "Unable to verify MT5 session identity",
+                )
+                raise FleetManagerError(
+                    "Unable to verify MT5 session identity"
+                )
+
             try:
-                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True, timeout=15)
+                result = subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    check=False,
+                    capture_output=True,
+                    timeout=15,
+                )
+
+                if result.returncode != 0 and self._pid_alive(pid):
+                    raise FleetManagerError(
+                        "MT5 session process tree did not terminate"
+                    )
+
+            except FleetManagerError:
+                self.store.update_status(
+                    session_id,
+                    "error",
+                    "Stop failed: process still running",
+                )
+                raise
+
             except Exception as exc:
-                self.store.update_status(session_id, "error", f"Stop failed: {type(exc).__name__}")
-                raise FleetManagerError("Unable to stop MT5 session") from exc
+                self.store.update_status(
+                    session_id,
+                    "error",
+                    f"Stop failed: {type(exc).__name__}",
+                )
+                raise FleetManagerError(
+                    "Unable to stop MT5 session"
+                ) from exc
+
         self.store.delete(session_id)
         item["status"] = "disconnected"
         item["pid"] = None
         return item
+
+    def _session_identity_verified(self, item: dict) -> bool:
+        pid = int(item.get("pid") or 0)
+        port = int(item.get("port") or 0)
+
+        if pid <= 0 or port <= 0:
+            return False
+
+        try:
+            process = psutil.Process(pid)
+
+            command_line = " ".join(process.cmdline()).casefold()
+            if "mt5_fleet_agent.session_runner" not in command_line:
+                return False
+
+            response = httpx.get(
+                f"http://127.0.0.1:{port}/health",
+                headers={
+                    "X-Abutron-Session-Token":
+                        self.settings.service_token
+                },
+                timeout=2,
+            )
+
+            if response.status_code != 200:
+                return False
+
+            health = response.json()
+
+            if (
+                health.get("status") != "ok"
+                or health.get("session_id")
+                    != item.get("session_id")
+                or health.get("account_id")
+                    != item.get("account_id")
+                or str(health.get("login"))
+                    != str(item.get("login"))
+                or str(health.get("server", "")).casefold()
+                    != str(item.get("server", "")).casefold()
+            ):
+                return False
+
+            owned_pids = {pid}
+            owned_pids.update(
+                child.pid
+                for child in process.children(recursive=True)
+            )
+
+            for connection in psutil.net_connections(kind="tcp"):
+                if connection.status != psutil.CONN_LISTEN:
+                    continue
+                if not connection.laddr:
+                    continue
+                if int(connection.laddr.port) != port:
+                    continue
+
+                if connection.pid in owned_pids:
+                    return True
+
+            return False
+
+        except (
+            psutil.Error,
+            httpx.HTTPError,
+            ValueError,
+            TypeError,
+            AttributeError,
+            OSError,
+        ):
+            return False
 
     def _existing_session_healthy(self, item: dict, request: StartRequest) -> bool:
         if item.get("status") != "running":
