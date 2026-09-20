@@ -15,6 +15,7 @@ class FleetSettings(BaseSettings):
     port_start: int = 8200
     port_end: int = 8999
     startup_timeout_seconds: int = 30
+    verify_timeout_ms: int = 30000
 
 
 settings = FleetSettings()
