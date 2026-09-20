@@ -22,7 +22,12 @@ class FleetStore:
 
     def list_ports(self) -> set[int]:
         with self._db() as db:
-            return {int(row[0]) for row in db.execute("SELECT port FROM sessions").fetchall()}
+            return {
+                int(row[0])
+                for row in db.execute(
+                    "SELECT port FROM sessions WHERE status IN ('provisioning','running')"
+                ).fetchall()
+            }
 
     def get_by_account(self, account_id: str) -> dict | None:
         with self._db() as db:
@@ -42,6 +47,14 @@ class FleetStore:
     def update_status(self, session_id: str, status: str, last_error: str = "") -> None:
         with self._lock, self._db() as db:
             db.execute("UPDATE sessions SET status=?, last_error=? WHERE session_id=?", (status, last_error, str(session_id)))
+            db.commit()
+
+    def delete(self, session_id: str) -> None:
+        with self._lock, self._db() as db:
+            db.execute(
+                "DELETE FROM sessions WHERE session_id=?",
+                (str(session_id),),
+            )
             db.commit()
 
     @staticmethod

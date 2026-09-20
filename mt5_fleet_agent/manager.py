@@ -54,8 +54,12 @@ class FleetManager:
 
     def start(self, request: StartRequest) -> dict:
         existing = self.store.get_by_account(str(request.account_id))
-        if existing and existing.get("pid") and self._pid_alive(int(existing["pid"])):
+        if existing and self._existing_session_healthy(existing, request):
             return existing
+
+        if existing:
+            self.store.delete(existing["session_id"])
+
         port = self.allocate_port(request.requested_port)
         terminal = self.provision_terminal(str(request.account_id))
         session_id = str(uuid.uuid4())
@@ -120,9 +124,54 @@ class FleetManager:
             except Exception as exc:
                 self.store.update_status(session_id, "error", f"Stop failed: {type(exc).__name__}")
                 raise FleetManagerError("Unable to stop MT5 session") from exc
-        self.store.update_status(session_id, "disconnected")
+        self.store.delete(session_id)
         item["status"] = "disconnected"
+        item["pid"] = None
         return item
+
+    def _existing_session_healthy(self, item: dict, request: StartRequest) -> bool:
+        if item.get("status") != "running":
+            return False
+
+        if item.get("account_id") != str(request.account_id):
+            return False
+        if item.get("login") != request.login:
+            return False
+        if str(item.get("server", "")).casefold() != request.server.casefold():
+            return False
+
+        pid = int(item.get("pid") or 0)
+        if not self._pid_alive(pid):
+            return False
+
+        port = int(item.get("port") or 0)
+        if port <= 0:
+            return False
+
+        try:
+            response = httpx.get(
+                f"http://127.0.0.1:{port}/health",
+                headers={
+                    "X-Abutron-Session-Token":
+                        self.settings.service_token
+                },
+                timeout=2,
+            )
+
+            if response.status_code != 200:
+                return False
+
+            health = response.json()
+
+            return (
+                health.get("status") == "ok"
+                and health.get("account_id") == str(request.account_id)
+                and str(health.get("login")) == request.login
+                and str(health.get("server", "")).casefold()
+                    == request.server.casefold()
+            )
+        except Exception:
+            return False
 
     @staticmethod
     def _pid_alive(pid: int) -> bool:
