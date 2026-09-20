@@ -35,15 +35,22 @@ class Settings(BaseSettings):
 
     billing_webhook_secret: str = "development-billing-webhook-secret-change-me"
 
+    mt5_fleet_enabled: bool = False
+    mt5_fleet_agent_url: str = "http://127.0.0.1:8180"
+    mt5_fleet_agent_token: str = ""
+    mt5_credential_key: str = ""
+    mt5_credential_key_version: int = 1
+    mt5_allowed_broker_slugs: Annotated[list[str], NoDecode] = ["ic-markets"]
+
     auto_create_schema: bool = False
     cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:3000",
         "http://localhost:5173",
     ]
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", "mt5_allowed_broker_slugs", mode="before")
     @classmethod
-    def parse_origins(cls, value):
+    def parse_csv_lists(cls, value):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
