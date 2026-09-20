@@ -11,7 +11,9 @@ from app.api import router
 from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.models import Base
+from app.mt5_fleet.router import router as mt5_fleet_router
 from app.observability import RequestContextMiddleware
+from app.mt5_fleet import models as _mt5_fleet_models  # noqa: F401,E402
 
 settings = get_settings()
 
@@ -27,7 +29,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Abutron Kronos Platform",
-    version="2.42.0",
+    version="2.44.0",
     docs_url="/docs" if settings.env != "production" else None,
     redoc_url=None,
     lifespan=lifespan,
@@ -51,6 +53,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(mt5_fleet_router)
 
 
 @app.get("/health/live")
