@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "abutron-platform"
-version = "2.42.0"
-description = "Abutron customer, admin, licensing and mobile gateway"
+version = "2.44.0"
+description = "Abutron customer, admin, licensing, mobile and MT5 multi-account gateway"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.116,<1",
@@ -20,6 +20,7 @@ dependencies = [
   "pwdlib[argon2]>=0.2,<1",
   "redis>=6,<7",
   "httpx>=0.28,<1",
+  "cryptography>=45,<47",
 ]
 
 [project.optional-dependencies]
@@ -41,4 +42,4 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-extend-ignore = ["B008"]  # FastAPI dependency injection uses Depends() in defaults.
+extend-ignore = ["B008"]
