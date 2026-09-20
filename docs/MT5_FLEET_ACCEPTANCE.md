@@ -1,0 +1,22 @@
+# MT5 Fleet acceptance checklist
+
+- [ ] Fleet Agent binds only to localhost/private management network.
+- [ ] Fleet token configured and not committed.
+- [ ] Fernet credential key configured outside PostgreSQL and Git.
+- [ ] IC Markets broker is active.
+- [ ] Account ownership mismatch blocks.
+- [ ] Non-IC-Markets account blocks.
+- [ ] MT5 login mismatch blocks.
+- [ ] MT5 server mismatch blocks.
+- [ ] Invalid MT5 password is not persisted.
+- [ ] Verified password is encrypted at rest.
+- [ ] Verification terminal copy is destroyed.
+- [ ] Child process receives DPAPI ciphertext, not plaintext password.
+- [ ] One account maps to one session row.
+- [ ] One account gets one isolated terminal directory.
+- [ ] One account gets one unique localhost gateway port.
+- [ ] Customer/mobile responses do not expose internal gateway URLs.
+- [ ] Admin can inspect session health.
+- [ ] Session reconnect decrypts only server-side.
+- [ ] Session disconnect stops only the selected account.
+- [ ] Order execution remains absent until per-session execution certification passes.
