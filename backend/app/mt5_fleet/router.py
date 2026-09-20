@@ -9,8 +9,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.models import Customer
 from app.mt5_fleet.models import MT5Session
-from app.mt5_fleet.schemas import MT5AdminSessionPublic, MT5ConnectRequest, MT5ConnectResponse, MT5SessionPublic
-from app.mt5_fleet.service import connect_mt5_account, disconnect_mt5_account, owned_ic_markets_account, reconnect_mt5_account
+from app.mt5_fleet.schemas import (
+    MT5AdminSessionPublic,
+    MT5ConnectRequest,
+    MT5ConnectResponse,
+    MT5SessionPublic,
+)
+from app.mt5_fleet.service import (
+    connect_mt5_account,
+    disconnect_mt5_account,
+    owned_ic_markets_account,
+    reconnect_mt5_account,
+)
 from app.security import get_current_customer, require_admin
 
 router = APIRouter(prefix="/api/v1", tags=["mt5-fleet"])

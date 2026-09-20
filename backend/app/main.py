@@ -11,9 +11,9 @@ from app.api import router
 from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.models import Base
+from app.mt5_fleet import models as _mt5_fleet_models  # noqa: F401
 from app.mt5_fleet.router import router as mt5_fleet_router
 from app.observability import RequestContextMiddleware
-from app.mt5_fleet import models as _mt5_fleet_models  # noqa: F401,E402
 
 settings = get_settings()
 

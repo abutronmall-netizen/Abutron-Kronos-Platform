@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import httpx
 
-from app.mt5_fleet.schemas import AgentStartRequest, AgentStartResponse, AgentStopResponse, MT5VerifyResult
+from app.mt5_fleet.schemas import (
+    AgentStartRequest,
+    AgentStartResponse,
+    AgentStopResponse,
+    MT5VerifyResult,
+)
 
 
 class MT5FleetClientError(RuntimeError):
@@ -38,9 +43,12 @@ class MT5FleetClient:
         if response.status_code >= 400:
             detail = ""
             try:
-                detail = str(response.json().get("detail", "")).strip()
-            except Exception:
-                pass
+                payload = response.json()
+            except ValueError:
+                payload = {}
+
+            if isinstance(payload, dict):
+                detail = str(payload.get("detail", "")).strip()
             suffix = f": {detail}" if detail else ""
             raise MT5FleetClientError(
                 f"MT5 verification failed ({response.status_code}){suffix}"

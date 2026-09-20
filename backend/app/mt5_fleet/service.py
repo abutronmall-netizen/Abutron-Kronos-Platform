@@ -12,7 +12,12 @@ from app.models import AccountStatus, AuditEvent, Broker, Customer, TradingAccou
 from app.mt5_fleet.client import MT5FleetClient, MT5FleetClientError
 from app.mt5_fleet.crypto import CredentialVault
 from app.mt5_fleet.models import MT5Credential, MT5Session, MT5SessionStatus
-from app.mt5_fleet.schemas import AgentStartRequest, MT5ConnectRequest, MT5ConnectResponse, MT5SessionPublic
+from app.mt5_fleet.schemas import (
+    AgentStartRequest,
+    MT5ConnectRequest,
+    MT5ConnectResponse,
+    MT5SessionPublic,
+)
 from app.services.equity_router import select_bot
 
 settings = get_settings()
