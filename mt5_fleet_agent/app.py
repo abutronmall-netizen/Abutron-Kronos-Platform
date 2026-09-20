@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import os
 import shutil
 import time
 import uuid
 
 from fastapi import FastAPI, Header, HTTPException
+import psutil
 
 from .manager import FleetManager, FleetManagerError
 from .models import StartRequest, StartResponse, StopResponse, VerifyRequest, VerifyResponse
@@ -19,6 +21,23 @@ except Exception:
 
 store = FleetStore(settings.state_db)
 manager = FleetManager(settings, store)
+
+
+def _terminate_terminal(terminal) -> None:
+    target = os.path.normcase(os.path.abspath(str(terminal)))
+    for proc in psutil.process_iter(["pid", "exe"]):
+        try:
+            exe = proc.info.get("exe")
+            if exe and os.path.normcase(os.path.abspath(exe)) == target:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except psutil.TimeoutExpired:
+                    proc.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+            continue
+
+
 app = FastAPI(title="Abutron MT5 Fleet Agent", version="4.1.0")
 
 
@@ -48,9 +67,10 @@ def verify(request: VerifyRequest, x_abutron_fleet_token: str | None = Header(de
     shutil.copytree(settings.terminal_template_dir, verify_root, dirs_exist_ok=True)
     terminal = verify_root / "terminal64.exe"
     try:
-        ok = mt5.initialize(path=str(terminal), login=int(request.login), password=request.password, server=request.server, portable=True)
+        ok = mt5.initialize(path=str(terminal), login=int(request.login), password=request.password, server=request.server, timeout=settings.verify_timeout_ms, portable=True)
         if not ok:
-            raise HTTPException(status_code=401, detail="MT5 credentials rejected")
+            code, message = mt5.last_error()
+            raise HTTPException(status_code=502, detail=f"MT5 initialize failed ({code}): {message}")
         info = mt5.account_info()
         if info is None:
             raise HTTPException(status_code=502, detail="MT5 account info unavailable")
@@ -72,6 +92,7 @@ def verify(request: VerifyRequest, x_abutron_fleet_token: str | None = Header(de
             mt5.shutdown()
         except Exception:
             pass
+        _terminate_terminal(terminal)
         time.sleep(0.25)
         shutil.rmtree(verify_root, ignore_errors=True)
 
