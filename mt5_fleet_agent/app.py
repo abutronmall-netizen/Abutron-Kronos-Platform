@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 import json
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -89,7 +90,7 @@ def verify(request: VerifyRequest, x_abutron_fleet_token: str | None = Header(de
         )
         worker = subprocess.Popen(
             [sys.executable, "-m", "mt5_fleet_agent.verify_worker"],
-            cwd=str(settings.terminal_template_dir.parent.parent.parent),
+            cwd=str(Path(__file__).resolve().parents[1]),
             env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
