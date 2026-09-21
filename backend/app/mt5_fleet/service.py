@@ -110,7 +110,28 @@ async def connect_mt5_account(db: AsyncSession, customer: Customer, request: MT5
             session.status = MT5SessionStatus.ERROR
             session.last_error = str(exc)
     else:
+        if session.agent_session_id:
+            try:
+                await fleet.stop(
+                    session.agent_session_id
+                )
+            except MT5FleetClientError as exc:
+                session.status = MT5SessionStatus.ERROR
+                session.last_error = str(exc)
+                await db.commit()
+
+                raise HTTPException(
+                    status_code=502,
+                    detail=str(exc),
+                ) from exc
+
         session.status = MT5SessionStatus.DISCONNECTED
+        session.agent_session_id = None
+        session.gateway_url = None
+        session.gateway_port = None
+        session.terminal_instance = None
+        session.last_error = None
+        session.last_health_at = datetime.now(UTC)
 
     db.add(AuditEvent(actor_customer_id=customer.id, action="mt5_account_connected", entity_type="trading_account", entity_id=str(account.id), payload={"broker": broker.slug, "login": login, "server": server, "tier": decision.tier.value, "route_reason": decision.reason}))
     await db.commit()

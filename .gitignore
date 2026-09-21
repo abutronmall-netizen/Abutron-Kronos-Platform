@@ -14,3 +14,7 @@ htmlcov/
 .idea/
 .vscode/
 .DS_Store
+backend/backend-8080.out.log
+backend/backend-8080.err.log
+fleet-agent-8180.out.log
+fleet-agent-8180.err.log
