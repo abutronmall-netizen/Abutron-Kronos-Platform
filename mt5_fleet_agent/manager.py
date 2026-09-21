@@ -163,8 +163,15 @@ class FleetManager:
         deadline = time.monotonic() + self.settings.startup_timeout_seconds
         while time.monotonic() < deadline:
             if process.poll() is not None:
-                self.store.update_status(session_id, "error", "Session runner exited")
-                raise FleetManagerError("MT5 session runner exited during startup")
+                self.store.update_status(
+                    session_id,
+                    "error",
+                    "Session runner exited",
+                )
+                self.store.delete(session_id)
+                raise FleetManagerError(
+                    "MT5 session runner exited during startup"
+                )
             try:
                 response = httpx.get(f"{gateway}/health", headers={"X-Abutron-Session-Token": self.settings.service_token}, timeout=2)
                 if response.status_code == 200 and response.json().get("status") == "ok":

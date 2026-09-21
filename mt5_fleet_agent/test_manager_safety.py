@@ -145,6 +145,86 @@ class FleetManagerSafetyTests(unittest.TestCase):
         self.assertEqual(deleted, [])
 
 
+    def test_start_deletes_row_when_runner_exits_early(self):
+        manager = object.__new__(FleetManager)
+
+        upserted = []
+        updated = []
+        deleted = []
+
+        manager.store = SimpleNamespace(
+            get_by_account=lambda account_id: None,
+            upsert=lambda item: upserted.append(item.copy()),
+            update_status=lambda session_id, status, last_error="": (
+                updated.append(
+                    (session_id, status, last_error)
+                )
+            ),
+            delete=lambda session_id: deleted.append(
+                session_id
+            ),
+        )
+
+        manager.settings = SimpleNamespace(
+            service_token="test-token",
+            startup_timeout_seconds=1,
+        )
+
+        request = SimpleNamespace(
+            account_id="account-1",
+            login="53054439",
+            server="ICMarketsSC-Demo",
+            password="test-only",
+            requested_port=None,
+        )
+
+        terminal = SimpleNamespace(
+            parent=r"C:\Abutron\MT5\accounts\account-1"
+        )
+
+        process = SimpleNamespace(
+            pid=54321,
+            poll=lambda: 1,
+        )
+
+        with (
+            patch.object(
+                manager,
+                "allocate_port",
+                return_value=8200,
+            ),
+            patch.object(
+                manager,
+                "provision_terminal",
+                return_value=terminal,
+            ),
+            patch(
+                "mt5_fleet_agent.manager.protect_for_current_user",
+                return_value="protected-test-value",
+            ),
+            patch(
+                "mt5_fleet_agent.manager.subprocess.Popen",
+                return_value=process,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                FleetManagerError,
+                "runner exited during startup",
+            ):
+                manager.start(request)
+
+        self.assertEqual(len(upserted), 1)
+
+        session_id = upserted[0]["session_id"]
+
+        self.assertIn(
+            (session_id, "error", "Session runner exited"),
+            updated,
+        )
+
+        self.assertIn(session_id, deleted)
+
+
     def test_allocate_port_rejects_os_occupied_port(self):
         manager = object.__new__(FleetManager)
 
