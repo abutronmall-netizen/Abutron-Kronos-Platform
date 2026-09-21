@@ -176,8 +176,11 @@ async def disconnect_mt5_account(db: AsyncSession, customer: Customer, account_i
             await db.commit()
             raise HTTPException(status_code=502, detail=str(exc)) from exc
     session.status = MT5SessionStatus.DISCONNECTED
+    session.agent_session_id = None
     session.gateway_url = None
     session.gateway_port = None
+    session.terminal_instance = None
+    session.last_error = None
     session.last_health_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(session)
