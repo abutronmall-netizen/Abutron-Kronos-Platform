@@ -290,8 +290,12 @@ class FleetManager:
 
             return (
                 health.get("status") == "ok"
-                and health.get("account_id") == str(request.account_id)
-                and str(health.get("login")) == request.login
+                and health.get("session_id")
+                    == item.get("session_id")
+                and health.get("account_id")
+                    == str(request.account_id)
+                and str(health.get("login"))
+                    == request.login
                 and str(health.get("server", "")).casefold()
                     == request.server.casefold()
             )

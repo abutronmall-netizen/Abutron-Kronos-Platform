@@ -82,6 +82,47 @@ class FleetManagerSafetyTests(unittest.TestCase):
         kill.assert_not_called()
         self.assertFalse(manager.store.deleted)
 
+    def test_existing_session_rejects_wrong_session_id(self):
+        manager = self.make_manager()
+
+        item = manager.store.get("expected-session")
+
+        request = SimpleNamespace(
+            account_id="account-1",
+            login="53054439",
+            server="ICMarketsSC-Demo",
+        )
+
+        wrong_health = SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "status": "ok",
+                "session_id": "different-session",
+                "account_id": "account-1",
+                "login": "53054439",
+                "server": "ICMarketsSC-Demo",
+            },
+        )
+
+        with (
+            patch.object(
+                manager,
+                "_pid_alive",
+                return_value=True,
+            ),
+            patch(
+                "mt5_fleet_agent.manager.httpx.get",
+                return_value=wrong_health,
+            ),
+        ):
+            healthy = manager._existing_session_healthy(
+                item,
+                request,
+            )
+
+        self.assertFalse(healthy)
+
+
     def test_stop_allows_exact_trusted_spawn_cleanup(self):
         manager = self.make_manager()
 
