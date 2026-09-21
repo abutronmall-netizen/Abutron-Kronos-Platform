@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -28,16 +29,61 @@ class FleetManager:
 
     def allocate_port(self, requested: int | None = None) -> int:
         used = self.store.list_ports()
+
         if requested is not None:
-            if requested < self.settings.port_start or requested > self.settings.port_end:
-                raise FleetManagerError("Requested port is outside the fleet range")
+            if (
+                requested < self.settings.port_start
+                or requested > self.settings.port_end
+            ):
+                raise FleetManagerError(
+                    "Requested port is outside the fleet range"
+                )
+
             if requested in used:
-                raise FleetManagerError("Requested port is already allocated")
+                raise FleetManagerError(
+                    "Requested port is already allocated"
+                )
+
+            if not self._port_available(requested):
+                raise FleetManagerError(
+                    "Requested port is already in use"
+                )
+
             return requested
-        for port in range(self.settings.port_start, self.settings.port_end + 1):
-            if port not in used:
+
+        for port in range(
+            self.settings.port_start,
+            self.settings.port_end + 1,
+        ):
+            if (
+                port not in used
+                and self._port_available(port)
+            ):
                 return port
-        raise FleetManagerError("No MT5 fleet ports are available")
+
+        raise FleetManagerError(
+            "No MT5 fleet ports are available"
+        )
+
+    @staticmethod
+    def _port_available(port: int) -> bool:
+        try:
+            with socket.socket(
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+            ) as probe:
+                if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                    probe.setsockopt(
+                        socket.SOL_SOCKET,
+                        socket.SO_EXCLUSIVEADDRUSE,
+                        1,
+                    )
+
+                probe.bind(("127.0.0.1", port))
+                return True
+
+        except OSError:
+            return False
 
     def provision_terminal(self, account_id: str) -> Path:
         source = self.settings.terminal_template_dir

@@ -1,3 +1,4 @@
+import socket
 import subprocess
 import unittest
 from types import SimpleNamespace
@@ -81,6 +82,58 @@ class FleetManagerSafetyTests(unittest.TestCase):
 
         kill.assert_not_called()
         self.assertFalse(manager.store.deleted)
+
+    def test_allocate_port_rejects_os_occupied_port(self):
+        manager = object.__new__(FleetManager)
+
+        with socket.socket(
+            socket.AF_INET,
+            socket.SOCK_STREAM,
+        ) as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+
+            occupied_port = listener.getsockname()[1]
+
+            manager.settings = SimpleNamespace(
+                port_start=occupied_port,
+                port_end=occupied_port,
+            )
+            manager.store = SimpleNamespace(
+                list_ports=lambda: set(),
+            )
+
+            with self.assertRaises(FleetManagerError):
+                manager.allocate_port(
+                    requested=occupied_port,
+                )
+
+
+    def test_allocate_port_skips_os_occupied_port(self):
+        manager = object.__new__(FleetManager)
+
+        with socket.socket(
+            socket.AF_INET,
+            socket.SOCK_STREAM,
+        ) as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+
+            occupied_port = listener.getsockname()[1]
+            next_port = occupied_port + 1
+
+            manager.settings = SimpleNamespace(
+                port_start=occupied_port,
+                port_end=next_port,
+            )
+            manager.store = SimpleNamespace(
+                list_ports=lambda: set(),
+            )
+
+            selected = manager.allocate_port()
+
+            self.assertEqual(selected, next_port)
+
 
     def test_existing_session_rejects_wrong_session_id(self):
         manager = self.make_manager()
