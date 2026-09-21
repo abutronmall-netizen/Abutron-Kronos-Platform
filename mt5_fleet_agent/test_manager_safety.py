@@ -277,6 +277,53 @@ class FleetManagerSafetyTests(unittest.TestCase):
             self.assertEqual(selected, next_port)
 
 
+    def test_existing_session_requires_process_listener_identity(self):
+        manager = self.make_manager()
+
+        item = manager.store.get("expected-session")
+
+        request = SimpleNamespace(
+            account_id="account-1",
+            login="53054439",
+            server="ICMarketsSC-Demo",
+        )
+
+        exact_health = SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "status": "ok",
+                "session_id": "expected-session",
+                "account_id": "account-1",
+                "login": "53054439",
+                "server": "ICMarketsSC-Demo",
+            },
+        )
+
+        with (
+            patch.object(
+                manager,
+                "_pid_alive",
+                return_value=True,
+            ),
+            patch.object(
+                manager,
+                "_session_identity_verified",
+                return_value=False,
+            ) as identity,
+            patch(
+                "mt5_fleet_agent.manager.httpx.get",
+                return_value=exact_health,
+            ),
+        ):
+            healthy = manager._existing_session_healthy(
+                item,
+                request,
+            )
+
+        self.assertFalse(healthy)
+        identity.assert_called_once_with(item)
+
+
     def test_existing_session_rejects_wrong_session_id(self):
         manager = self.make_manager()
 

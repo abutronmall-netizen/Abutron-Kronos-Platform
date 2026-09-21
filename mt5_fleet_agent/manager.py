@@ -358,7 +358,7 @@ class FleetManager:
 
             health = response.json()
 
-            return (
+            health_matches = (
                 health.get("status") == "ok"
                 and health.get("session_id")
                     == item.get("session_id")
@@ -369,6 +369,11 @@ class FleetManager:
                 and str(health.get("server", "")).casefold()
                     == request.server.casefold()
             )
+
+            if not health_matches:
+                return False
+
+            return self._session_identity_verified(item)
         except Exception:
             return False
 
