@@ -105,9 +105,26 @@ class FleetManager:
             return existing
 
         if existing:
-            self.store.delete(existing["session_id"])
+            existing_pid = int(
+                existing.get("pid") or 0
+            )
 
-        port = self.allocate_port(request.requested_port)
+            if (
+                existing_pid
+                and self._pid_alive(existing_pid)
+            ):
+                raise FleetManagerError(
+                    "Existing MT5 session is live but "
+                    "failed identity verification"
+                )
+
+            self.store.delete(
+                existing["session_id"]
+            )
+
+        port = self.allocate_port(
+            request.requested_port
+        )
         terminal = self.provision_terminal(str(request.account_id))
         session_id = str(uuid.uuid4())
         env = os.environ.copy()

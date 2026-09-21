@@ -83,6 +83,68 @@ class FleetManagerSafetyTests(unittest.TestCase):
         kill.assert_not_called()
         self.assertFalse(manager.store.deleted)
 
+    def test_start_refuses_unverified_live_existing_session(self):
+        manager = object.__new__(FleetManager)
+
+        existing = {
+            "session_id": "existing-session",
+            "account_id": "account-1",
+            "login": "53054439",
+            "server": "ICMarketsSC-Demo",
+            "port": 8200,
+            "terminal_instance":
+                r"C:\Abutron\MT5\accounts\account-1",
+            "pid": 12345,
+            "status": "running",
+            "last_error": "",
+        }
+
+        deleted = []
+
+        manager.store = SimpleNamespace(
+            get_by_account=lambda account_id: existing,
+            delete=lambda session_id: deleted.append(
+                session_id
+            ),
+        )
+
+        manager.settings = SimpleNamespace()
+
+        request = SimpleNamespace(
+            account_id="account-1",
+            login="53054439",
+            server="ICMarketsSC-Demo",
+            password="test-only",
+            requested_port=None,
+        )
+
+        with (
+            patch.object(
+                manager,
+                "_existing_session_healthy",
+                return_value=False,
+            ),
+            patch.object(
+                manager,
+                "_pid_alive",
+                return_value=True,
+            ),
+            patch.object(
+                manager,
+                "allocate_port",
+                side_effect=AssertionError(
+                    "must not allocate while an "
+                    "unverified live session exists"
+                ),
+            ) as allocate,
+        ):
+            with self.assertRaises(FleetManagerError):
+                manager.start(request)
+
+        allocate.assert_not_called()
+        self.assertEqual(deleted, [])
+
+
     def test_allocate_port_rejects_os_occupied_port(self):
         manager = object.__new__(FleetManager)
 
