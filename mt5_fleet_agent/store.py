@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import sqlite3
 import threading
 from pathlib import Path
@@ -12,8 +13,16 @@ class FleetStore:
         self._lock = threading.RLock()
         self._init()
 
+    @contextmanager
     def _db(self):
-        return sqlite3.connect(self.path, timeout=10)
+        db = sqlite3.connect(
+            self.path,
+            timeout=10,
+        )
+        try:
+            yield db
+        finally:
+            db.close()
 
     def _init(self) -> None:
         with self._db() as db:
