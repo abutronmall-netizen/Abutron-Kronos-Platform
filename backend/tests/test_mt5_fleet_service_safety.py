@@ -8,6 +8,7 @@ from app.mt5_fleet.models import MT5SessionStatus
 from app.mt5_fleet.service import (
     connect_mt5_account,
     disconnect_mt5_account,
+    reconnect_mt5_account,
 )
 
 
@@ -459,5 +460,106 @@ def test_connect_without_start_stop_failure_preserves_runtime_identity():
         )
 
         assert db.commits >= 1
+
+    asyncio.run(scenario())
+
+
+def test_reconnect_maps_agent_failure_to_502():
+    from fastapi import HTTPException
+
+    from app.mt5_fleet.client import MT5FleetClientError
+
+    async def scenario():
+        account_id = uuid.uuid4()
+
+        account = SimpleNamespace(
+            id=account_id,
+            broker_login="53054439",
+            server_name="ICMarketsSC-Demo",
+        )
+
+        customer = SimpleNamespace(
+            id=uuid.uuid4(),
+        )
+
+        credential = SimpleNamespace(
+            encrypted_password="encrypted-test",
+            key_version=1,
+        )
+
+        class FakeReconnectDB:
+            async def scalar(self, statement):
+                return credential
+
+        class FakeVault:
+            def __init__(self, key, version):
+                pass
+
+            def decrypt(self, value):
+                return "test-only-password"
+
+        class FakeFleetClient:
+            def __init__(self, base_url, token):
+                pass
+
+            async def start(self, request):
+                raise MT5FleetClientError(
+                    "forced reconnect failure"
+                )
+
+        fake_settings = SimpleNamespace(
+            mt5_fleet_enabled=True,
+            mt5_fleet_agent_url=(
+                "http://127.0.0.1:8180"
+            ),
+            mt5_fleet_agent_token="test-token",
+            mt5_credential_key="test-key",
+            mt5_allowed_broker_slugs=[
+                "ic-markets"
+            ],
+        )
+
+        caught = None
+
+        with (
+            patch(
+                "app.mt5_fleet.service.settings",
+                fake_settings,
+            ),
+            patch(
+                "app.mt5_fleet.service."
+                "owned_ic_markets_account",
+                new=AsyncMock(
+                    return_value=(
+                        account,
+                        SimpleNamespace(),
+                    )
+                ),
+            ),
+            patch(
+                "app.mt5_fleet.service."
+                "CredentialVault",
+                FakeVault,
+            ),
+            patch(
+                "app.mt5_fleet.service."
+                "MT5FleetClient",
+                FakeFleetClient,
+            ),
+        ):
+            try:
+                await reconnect_mt5_account(
+                    FakeReconnectDB(),
+                    customer,
+                    account_id,
+                )
+            except HTTPException as exc:
+                caught = exc
+
+        assert caught is not None
+        assert caught.status_code == 502
+        assert caught.detail == (
+            "forced reconnect failure"
+        )
 
     asyncio.run(scenario())

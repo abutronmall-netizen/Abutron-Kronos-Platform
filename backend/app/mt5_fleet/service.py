@@ -163,6 +163,11 @@ async def reconnect_mt5_account(db: AsyncSession, customer: Customer, account_id
     payload = AgentStartRequest(account_id=account.id, login=account.broker_login, server=account.server_name, password=password)
     try:
         started = await fleet.start(payload)
+    except MT5FleetClientError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=str(exc),
+        ) from exc
     finally:
         password = ""
 
