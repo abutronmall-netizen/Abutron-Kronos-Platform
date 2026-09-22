@@ -56,22 +56,75 @@ class MT5FleetClient:
         return MT5VerifyResult.model_validate(response.json())
 
     async def start(self, request: AgentStartRequest) -> AgentStartResponse:
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(f"{self.base_url}/v1/sessions/start", json=request.model_dump(mode="json"), headers=self._headers())
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    f"{self.base_url}/v1/sessions/start",
+                    json=request.model_dump(mode="json"),
+                    headers=self._headers(),
+                )
+        except httpx.TimeoutException as exc:
+            raise MT5FleetClientError(
+                "MT5 session start timed out"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise MT5FleetClientError(
+                "MT5 fleet agent unavailable"
+            ) from exc
+
         if response.status_code >= 400:
-            raise MT5FleetClientError(f"MT5 session start failed ({response.status_code})")
-        return AgentStartResponse.model_validate(response.json())
+            raise MT5FleetClientError(
+                f"MT5 session start failed ({response.status_code})"
+            )
+
+        return AgentStartResponse.model_validate(
+            response.json()
+        )
 
     async def stop(self, session_id: str) -> AgentStopResponse:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(f"{self.base_url}/v1/sessions/{session_id}/stop", headers=self._headers())
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    f"{self.base_url}/v1/sessions/{session_id}/stop",
+                    headers=self._headers(),
+                )
+        except httpx.TimeoutException as exc:
+            raise MT5FleetClientError(
+                "MT5 session stop timed out"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise MT5FleetClientError(
+                "MT5 fleet agent unavailable"
+            ) from exc
+
         if response.status_code >= 400:
-            raise MT5FleetClientError(f"MT5 session stop failed ({response.status_code})")
-        return AgentStopResponse.model_validate(response.json())
+            raise MT5FleetClientError(
+                f"MT5 session stop failed ({response.status_code})"
+            )
+
+        return AgentStopResponse.model_validate(
+            response.json()
+        )
 
     async def status(self, session_id: str) -> dict:
-        async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.get(f"{self.base_url}/v1/sessions/{session_id}", headers=self._headers())
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                response = await client.get(
+                    f"{self.base_url}/v1/sessions/{session_id}",
+                    headers=self._headers(),
+                )
+        except httpx.TimeoutException as exc:
+            raise MT5FleetClientError(
+                "MT5 session status timed out"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise MT5FleetClientError(
+                "MT5 fleet agent unavailable"
+            ) from exc
+
         if response.status_code >= 400:
-            raise MT5FleetClientError(f"MT5 session status failed ({response.status_code})")
+            raise MT5FleetClientError(
+                f"MT5 session status failed ({response.status_code})"
+            )
+
         return response.json()
