@@ -3,8 +3,8 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from app.mt5_fleet.models import MT5SessionStatus
 from app.models import BotTier
+from app.mt5_fleet.models import MT5SessionStatus
 from app.mt5_fleet.service import (
     connect_mt5_account,
     disconnect_mt5_account,
