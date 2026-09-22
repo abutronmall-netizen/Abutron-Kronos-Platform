@@ -147,6 +147,42 @@ class FleetManager:
             stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
+
+        try:
+            process_create_time = float(
+                psutil.Process(
+                    process.pid
+                ).create_time()
+            )
+        except (
+            psutil.Error,
+            OSError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            try:
+                subprocess.run(
+                    [
+                        "taskkill",
+                        "/PID",
+                        str(process.pid),
+                        "/T",
+                        "/F",
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=15,
+                )
+            except (
+                OSError,
+                subprocess.SubprocessError,
+            ):
+                pass
+
+            raise FleetManagerError(
+                "Unable to record MT5 session process identity"
+            ) from exc
+
         item = {
             "session_id": session_id,
             "account_id": str(request.account_id),
@@ -155,6 +191,7 @@ class FleetManager:
             "port": port,
             "terminal_instance": str(terminal.parent),
             "pid": process.pid,
+            "process_create_time": process_create_time,
             "status": "provisioning",
             "last_error": "",
         }
@@ -263,6 +300,23 @@ class FleetManager:
 
         try:
             process = psutil.Process(pid)
+
+            stored_create_time = item.get(
+                "process_create_time"
+            )
+
+            if stored_create_time is None:
+                return False
+
+            actual_create_time = float(
+                process.create_time()
+            )
+
+            if abs(
+                actual_create_time
+                - float(stored_create_time)
+            ) > 0.001:
+                return False
 
             command_line = " ".join(process.cmdline()).casefold()
             if "mt5_fleet_agent.session_runner" not in command_line:
