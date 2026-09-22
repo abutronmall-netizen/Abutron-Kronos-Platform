@@ -83,6 +83,79 @@ class FleetManagerSafetyTests(unittest.TestCase):
         kill.assert_not_called()
         self.assertFalse(manager.store.deleted)
 
+    def test_start_reuses_healthy_exact_existing_session(self):
+        manager = object.__new__(FleetManager)
+
+        existing = {
+            "session_id": "existing-session",
+            "account_id": "account-1",
+            "login": "53054439",
+            "server": "ICMarketsSC-Demo",
+            "port": 8200,
+            "terminal_instance":
+                r"C:\Abutron\MT5\accounts\account-1",
+            "pid": 12345,
+            "status": "running",
+            "last_error": "",
+        }
+
+        deleted = []
+
+        manager.store = SimpleNamespace(
+            get_by_account=lambda account_id: existing,
+            delete=lambda session_id: deleted.append(
+                session_id
+            ),
+        )
+
+        request = SimpleNamespace(
+            account_id="account-1",
+            login="53054439",
+            server="ICMarketsSC-Demo",
+            password="test-only",
+            requested_port=None,
+        )
+
+        with (
+            patch.object(
+                manager,
+                "_existing_session_healthy",
+                return_value=True,
+            ) as healthy,
+            patch.object(
+                manager,
+                "allocate_port",
+                side_effect=AssertionError(
+                    "must not allocate a new port"
+                ),
+            ) as allocate,
+            patch.object(
+                manager,
+                "provision_terminal",
+                side_effect=AssertionError(
+                    "must not provision a duplicate terminal"
+                ),
+            ) as provision,
+            patch(
+                "mt5_fleet_agent.manager.subprocess.Popen",
+                side_effect=AssertionError(
+                    "must not spawn a duplicate runner"
+                ),
+            ) as spawn,
+        ):
+            result = manager.start(request)
+
+        self.assertIs(result, existing)
+        healthy.assert_called_once_with(
+            existing,
+            request,
+        )
+        allocate.assert_not_called()
+        provision.assert_not_called()
+        spawn.assert_not_called()
+        self.assertEqual(deleted, [])
+
+
     def test_start_refuses_unverified_live_existing_session(self):
         manager = object.__new__(FleetManager)
 
