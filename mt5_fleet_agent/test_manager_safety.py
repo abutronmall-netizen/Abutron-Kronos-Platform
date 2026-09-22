@@ -429,6 +429,60 @@ class FleetManagerSafetyTests(unittest.TestCase):
             self.assertEqual(selected, next_port)
 
 
+    def test_session_identity_accepts_matching_process_creation_time(self):
+        manager = self.make_manager()
+
+        item = manager.store.get("expected-session")
+        item["process_create_time"] = 1000.0
+
+        process = SimpleNamespace(
+            cmdline=lambda: [
+                "python.exe",
+                "-m",
+                "mt5_fleet_agent.session_runner",
+            ],
+            children=lambda recursive=True: [],
+            create_time=lambda: 1000.0,
+        )
+
+        exact_health = SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "status": "ok",
+                "session_id": "expected-session",
+                "account_id": "account-1",
+                "login": "53054439",
+                "server": "ICMarketsSC-Demo",
+            },
+        )
+
+        listener = SimpleNamespace(
+            status=psutil.CONN_LISTEN,
+            laddr=SimpleNamespace(port=8200),
+            pid=12345,
+        )
+
+        with (
+            patch(
+                "mt5_fleet_agent.manager.psutil.Process",
+                return_value=process,
+            ),
+            patch(
+                "mt5_fleet_agent.manager.httpx.get",
+                return_value=exact_health,
+            ),
+            patch(
+                "mt5_fleet_agent.manager.psutil.net_connections",
+                return_value=[listener],
+            ),
+        ):
+            verified = manager._session_identity_verified(
+                item
+            )
+
+        self.assertTrue(verified)
+
+
     def test_session_identity_rejects_process_creation_time_mismatch(self):
         manager = self.make_manager()
 
