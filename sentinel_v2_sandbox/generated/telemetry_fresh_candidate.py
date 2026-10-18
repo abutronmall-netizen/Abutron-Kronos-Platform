@@ -1,30 +1,21 @@
-from datetime import datetime, timezone
+"""Reviewed baseline for isolated Sentinel telemetry freshness acceptance.
+
+Unlike the Qwen3 draft-PR proposals, this baseline is maintained by the
+engineering workflow and must satisfy expanded negative input tests.
+"""
+from datetime import datetime
+
 
 def telemetry_fresh(timestamp: str, now: datetime) -> bool:
+    if not isinstance(timestamp, str) or not isinstance(now, datetime):
+        return False
+    if now.tzinfo is None or now.utcoffset() is None:
+        return False
     try:
-        parsed_timestamp = datetime.fromisoformat(timestamp)
-    except ValueError:
+        observed = datetime.fromisoformat(timestamp)
+    except (ValueError, TypeError):
         return False
-    
-    # Check if now is timezone-aware before comparing
-    if now.tzinfo is None:
+    if observed.tzinfo is None or observed.utcoffset() is None:
         return False
-    
-    # If parsed_timestamp has no timezone, it's naive and cannot be compared
-    if parsed_timestamp.tzinfo is None:
-        return False
-    
-    # Ensure both timestamps are timezone-aware for comparison
-    if parsed_timestamp.tzinfo is None:
-        # Convert to timezone-aware if now has timezone info
-        if now.tzinfo is not None:
-            parsed_timestamp = parsed_timestamp.replace(tzinfo=now.tzinfo)
-        else:
-            return False
-    
-    # Compare timestamps: parsed_timestamp should not be in the future
-    if parsed_timestamp > now:
-        return False
-    
-    age = (now - parsed_timestamp).total_seconds()
-    return 0 <= age <= 180
+    age = (now - observed).total_seconds()
+    return 0.0 <= age <= 180.0
