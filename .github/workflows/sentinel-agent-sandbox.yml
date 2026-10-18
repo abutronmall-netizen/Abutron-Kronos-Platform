@@ -1,0 +1,105 @@
+name: Sentinel V2 Hardened AI Patch Validation
+
+on:
+  push:
+    branches: [feature/sentinel-v2-sandbox-20261018]
+    paths:
+      - sentinel_v2_sandbox/generated/**
+      - sentinel_v2_sandbox/tests/test_candidate_unittest.py
+      - .github/workflows/sentinel-agent-sandbox.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - sentinel_v2_sandbox/generated/**
+      - sentinel_v2_sandbox/tests/test_candidate_unittest.py
+      - .github/workflows/sentinel-agent-sandbox.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sentinel-ai-sandbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ephemeral-agent-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install deterministic lint repair tool
+        run: python -m pip install --disable-pip-version-check 'ruff>=0.13,<1'
+      - name: AST allowlist static gate before executing untrusted code
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          p=Path("sentinel_v2_sandbox/generated/telemetry_fresh_candidate.py")
+          assert p.is_file() and not p.is_symlink() and p.stat().st_size <= 6000
+          tree=ast.parse(p.read_text(encoding="utf-8"))
+          defs=[]
+          for node in tree.body:
+              if isinstance(node,ast.ImportFrom):
+                  assert node.module == "datetime", "Untrusted import detected"
+              elif isinstance(node,ast.FunctionDef):
+                  defs.append(node.name)
+              else:
+                  raise AssertionError("Unexpected top-level code")
+          assert defs == ["telemetry_fresh"], defs
+          for node in ast.walk(tree):
+              assert not isinstance(node,(ast.Import,ast.Lambda,ast.Global,ast.Nonlocal,
+                                          ast.With,ast.AsyncWith)),type(node).__name__
+              if isinstance(node,ast.Call) and isinstance(node.func,ast.Name):
+                  assert node.func.id not in ("eval","exec","open","__import__")
+          print("Static AST scope verified; not executed.")
+          PY
+      - name: Prepare Docker sandbox image
+        run: docker pull python:3.12-slim
+      - name: Test candidate and attempt one bounded deterministic auto-repair
+        shell: bash
+        run: |
+          mkdir -p agent-evidence
+          set +e
+          pass=0
+          for attempt in 1 2; do
+            echo "Sandbox attempt ${attempt} / 2" | tee -a agent-evidence/attempts.log
+            timeout 90s docker run --rm \
+              --network none --read-only --cap-drop ALL \
+              --security-opt no-new-privileges \
+              --pids-limit 40 --memory 512m --cpus 1 \
+              --user 65534:65534 \
+              --tmpfs /tmp:rw,nosuid,noexec,size=64m \
+              -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/work \
+              --mount type=bind,source="$PWD/sentinel_v2_sandbox/generated",target=/work/generated,readonly \
+              --mount type=bind,source="$PWD/sentinel_v2_sandbox/tests",target=/work/tests,readonly \
+              -w /work python:3.12-slim \
+              python -m unittest discover -s tests -p test_candidate_unittest.py -v \
+              > agent-evidence/attempt-${attempt}.log 2>&1
+            rc=$?
+            tail -35 agent-evidence/attempt-${attempt}.log
+            if [ "$rc" -eq 0 ]; then pass=1; break; fi
+            if [ "$attempt" -eq 1 ]; then
+              echo "Attempting Ruff auto-fix (no model/host code execution)" | tee -a agent-evidence/attempts.log
+              ruff check --fix --select E4,E7,E9,F sentinel_v2_sandbox/generated/telemetry_fresh_candidate.py \
+                > agent-evidence/ruff-repair.log 2>&1 || true
+            fi
+          done
+          sha256sum sentinel_v2_sandbox/generated/telemetry_fresh_candidate.py > agent-evidence/code-sha256.txt
+          if [ "$pass" -ne 1 ]; then
+            echo "Agent candidate REJECTED by isolated regression tests" >&2
+            exit 1
+          fi
+          echo "Agent candidate passed isolated regression tests."
+      - name: Upload untrusted candidate evaluation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-v2-agent-sandbox-evidence
+          path: agent-evidence/
+          retention-days: 14
+
+# No repository write token, no secrets, no broker connection, no production deployment.
+# Generated code is only imported in a no-network nonprivileged Docker sandbox.
