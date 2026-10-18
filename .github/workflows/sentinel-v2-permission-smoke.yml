@@ -1,0 +1,59 @@
+name: Sentinel V2 Draft PR Permission Smoke Test
+
+on:
+  push:
+    branches: [feature/sentinel-v2-sandbox-20261018]
+    paths:
+      - .github/workflows/sentinel-v2-permission-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-harmless-draft-pr:
+    if: github.repository == 'abutronmall-netizen/Abutron-Kronos-Platform' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout isolated test branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/sentinel-v2-sandbox-20261018
+          persist-credentials: false
+      - name: Verify repository token can create draft-only pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: abutronmall-netizen/Abutron-Kronos-Platform
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          B="sentinel/actions-permission-verified-${GITHUB_RUN_ID}"
+          git switch -c "$B"
+          mkdir -p sentinel_v2_sandbox/permission_checks
+          cat > "sentinel_v2_sandbox/permission_checks/${GITHUB_RUN_ID}.md" <<EOF
+          # GitHub Actions draft-PR permission verification
+          GitHub run: $GITHUB_RUN_ID
+          Trigger commit: $GITHUB_SHA
+          Effect: Creates a DRAFT pull request only.
+          No model patch, production deployment, approvals, merge, broker access or trading.
+          This is NOT Sentinel's end-to-end AI coding certification.
+          EOF
+          git add -- "sentinel_v2_sandbox/permission_checks/${GITHUB_RUN_ID}.md"
+          changed="$(git diff --cached --name-only)"
+          [[ "$changed" == "sentinel_v2_sandbox/permission_checks/${GITHUB_RUN_ID}.md" ]]
+          git diff --cached --check
+          git commit -m "test(sentinel): verified safe draft-PR permissions"
+          header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic $header" push \
+            "https://github.com/$GH_REPO.git" "HEAD:refs/heads/$B"
+          gh pr create --repo "$GH_REPO" --base feature/sentinel-v2-sandbox-20261018 \
+            --head "$B" --draft \
+            --title "Sentinel GitHub Actions automatic draft-PR permission test $GITHUB_RUN_ID" \
+            --body "Permissions smoke test only. This PR contains a harmless markdown verification file, not AI-generated code. No independent approval or production release is claimed. Evidence: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
