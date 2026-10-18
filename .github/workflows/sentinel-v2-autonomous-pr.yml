@@ -28,6 +28,9 @@ jobs:
           ref: feature/sentinel-v2-sandbox-20261018
           persist-credentials: false
 
+      - name: Validate bounded coding-worker policy without executing model code
+        run: python3 -m unittest discover -s sentinel_v2_sandbox/agent -p 'test_worker_policy.py' -v
+
       - name: Pin and validate Qwen3 GGUF and llama.cpp executable
         shell: bash
         run: |
