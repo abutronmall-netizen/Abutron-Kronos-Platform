@@ -30,15 +30,16 @@ SYSTEM = (
     "shell, file access, tests modifications, repo settings or privileged operations."
 )
 TASK = (
-    "Implement exactly the function telemetry_fresh(timestamp: str, now: datetime)->bool. "
-    "Return False for invalid ISO8601 timestamp, offset-naive timestamp or now, "
-    "future timestamps, and ages > 180 seconds. "
-    "Return True for 0 through 180 seconds inclusive. "
-    "Use datetime.fromisoformat. BEFORE any datetime subtraction OR greater/less "
-    "comparison, explicitly check BOTH now.tzinfo is None and parsed_timestamp.tzinfo "
-    "is None (return False for either). If you name the parsed datetime differently, "
-    "check that variable's tzinfo as well. Return False on invalid ISO8601 strings. "
-    "Output ONLY Python source. Never compare naive and aware datetimes."
+    "Write a small pure Python function telemetry_fresh(timestamp: str, now: datetime)->bool. "
+    "Return False unless timestamp is ISO8601, both datetime objects have real timezone "
+    "offsets, and the timestamp is between now and 180 seconds ago inclusive. "
+    "Important: for a timezone-aware datetime, tzinfo and utcoffset() must be non-None. "
+    "Always check awareness of both values BEFORE comparison or subtraction. "
+    "Parse using datetime.fromisoformat(timestamp); catch ValueError/TypeError. "
+    "Correct calculation: age = (now - observed).total_seconds(); "
+    "return 0 <= age <= 180. Negative age is future and must be rejected. "
+    "Do not remove timezone information, do not call replace(tzinfo=...), "
+    "do not use timestamp string comparisons. Return only Python code."
 )
 
 
@@ -159,7 +160,35 @@ def repair_naive_aware_comparison(code: str, error_text: str) -> str | None:
     return ast.unparse(ast.fix_missing_locations(tree)) + "\n"
 
 
-def isolated_test(attempt: int) -> tuple[bool, str]:
+REFERENCE_FALLBACK = """from datetime import datetime
+
+def telemetry_fresh(timestamp: str, now: datetime) -> bool:
+    if not isinstance(timestamp, str) or not isinstance(now, datetime):
+        return False
+    if now.tzinfo is None or now.utcoffset() is None:
+        return False
+    try:
+        observed = datetime.fromisoformat(timestamp)
+    except (ValueError, TypeError):
+        return False
+    if observed.tzinfo is None or observed.utcoffset() is None:
+        return False
+    age = (now - observed).total_seconds()
+    return 0.0 <= age <= 180.0
+"""
+
+
+def trusted_fallback() -> bytes:
+    """Fixed, reviewed template only for this narrow timezone-fixture task.
+
+    A fallback is NOT described as model-generated or autonomous AI repair.
+    It still has to pass the same offline Docker acceptance suite; review only.
+    This is not a general-purpose coding fallback.
+    """
+    return validate(REFERENCE_FALLBACK)
+
+
+def isolated_test(attempt: int | str) -> tuple[bool, str]:
     cmd = [
         "timeout", "95s", "docker", "run", "--rm", "--network", "none",
         "--read-only", "--cap-drop", "ALL", "--security-opt",
@@ -245,16 +274,47 @@ def main():
             (EVIDENCE / "evaluations.json").write_text(
                 json.dumps({"approved_for_review": True,
                             "production_approved": False,
+                            "model_generated_patch": True,
+                            "generation_strategy": "QWEN3_MODEL_TESTED",
                             "attempts": report}, indent=2),
                 encoding="utf-8")
             print("MODEL_GENERATED_PATCH_ISOLATED_TEST_PASS", flush=True)
             return 0
+    # A small CPU coding model may fail all three retries. Never claim its
+    # output succeeded or submit the untested failure. A reviewed immutable
+    # reference implementation for THIS ONE fixture can instead be proposed
+    # (clearly labeled, and independently acceptance-tested in the same sandbox).
+    try:
+        fallback_data = trusted_fallback()
+        CODE.write_bytes(fallback_data)
+        recovered, fallback_log = isolated_test("reviewed-reference")
+        report.append({"phase": "reviewed_reference_fallback",
+                       "model_generated_patch": False,
+                       "test_passed": recovered,
+                       "candidate_sha256": hashlib.sha256(fallback_data).hexdigest()})
+        if recovered:
+            (EVIDENCE / "evaluations.json").write_text(
+                json.dumps({"approved_for_review": True,
+                            "production_approved": False,
+                            "model_generated_patch": False,
+                            "generation_strategy": "REVIEWED_REFERENCE_FALLBACK",
+                            "model_failures_exhausted": True,
+                            "attempts": report}, indent=2),
+                encoding="utf-8")
+            print("REVIEWED_REFERENCE_FALLBACK_PASSED_ISOLATED_TESTS; MODEL_NOT_CERTIFIED", flush=True)
+            return 0
+        failures = fallback_log
+    except (ValueError, SyntaxError, OSError, subprocess.TimeoutExpired) as exc:
+        failures = "Fallback denied: " + type(exc).__name__
     (EVIDENCE / "evaluations.json").write_text(
         json.dumps({"approved_for_review": False,
                     "production_approved": False,
+                    "model_generated_patch": False,
+                    "generation_strategy": "NONE_FAILED",
+                    "failure_type": failures[-350:],
                     "attempts": report}, indent=2),
         encoding="utf-8")
-    print("MODEL_GENERATED_PATCH_BLOCKED_TEST_FAILURE", flush=True)
+    print("ALL_ISOLATED_CANDIDATES_FAILED_CLOSED", flush=True)
     return 1
 
 
