@@ -199,7 +199,10 @@ jobs:
           assert item["isDraft"] is True, "Automatic PR must remain DRAFT"
           assert item["baseRefName"]=="feature/sentinel-v2-sandbox-20261018"
           assert item["headRefOid"]==head, "Head SHA mismatch"
-          assert item["author"]["login"]=="github-actions[bot]"
+          actor_info=json.loads(subprocess.check_output([
+              "gh","api","repos/abutronmall-netizen/Abutron-Kronos-Platform/pulls/"+str(item["number"])
+          ],text=True))
+          assert actor_info["user"]["login"]=="github-actions[bot]", "Expected scoped GitHub Actions actor"
           print("DRAFT_REVIEW_ONLY_HEAD_VERIFIED",head)
           PY
 
