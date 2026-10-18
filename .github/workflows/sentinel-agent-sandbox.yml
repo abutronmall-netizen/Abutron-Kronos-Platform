@@ -2,13 +2,13 @@ name: Sentinel V2 Hardened AI Patch Validation
 
 on:
   push:
-    branches: [feature/sentinel-v2-sandbox-20261018]
+    branches: [feature/sentinel-v2-sandbox-20261018, 'sentinel/qwen3-sandbox-*']
     paths:
       - sentinel_v2_sandbox/generated/**
       - sentinel_v2_sandbox/tests/test_candidate_unittest.py
       - .github/workflows/sentinel-agent-sandbox.yml
   pull_request:
-    branches: [main]
+    branches: [main, feature/sentinel-v2-sandbox-20261018]
     paths:
       - sentinel_v2_sandbox/generated/**
       - sentinel_v2_sandbox/tests/test_candidate_unittest.py
