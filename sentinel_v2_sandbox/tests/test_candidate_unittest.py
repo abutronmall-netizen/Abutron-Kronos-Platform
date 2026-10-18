@@ -23,5 +23,26 @@ class GeneratedTelemetryTests(unittest.TestCase):
         observed=(self.now-timedelta(seconds=10)).astimezone(offset)
         self.assertTrue(telemetry_fresh(observed.isoformat(),self.now))
 
+    def test_fractional_second_boundary(self):
+        valid=(self.now-timedelta(seconds=180)+timedelta(microseconds=1)).isoformat()
+        stale=(self.now-timedelta(seconds=180,microseconds=1)).isoformat()
+        self.assertTrue(telemetry_fresh(valid,self.now))
+        self.assertFalse(telemetry_fresh(stale,self.now))
+        self.assertFalse(telemetry_fresh((self.now+timedelta(microseconds=1)).isoformat(),self.now))
+
+    def test_utc_z_and_cross_timezone_clock(self):
+        self.assertTrue(telemetry_fresh("2026-10-18T12:00:00Z",self.now))
+        india=timezone(timedelta(hours=5,minutes=30))
+        self.assertTrue(telemetry_fresh(self.now.isoformat(),self.now.astimezone(india)))
+        self.assertTrue(telemetry_fresh(
+            (self.now-timedelta(seconds=179)).astimezone(india).isoformat(),self.now))
+        self.assertFalse(telemetry_fresh(
+            (self.now-timedelta(seconds=181)).astimezone(india).isoformat(),self.now))
+
+    def test_wrong_input_types_fail_closed(self):
+        self.assertFalse(telemetry_fresh(None,self.now))
+        self.assertFalse(telemetry_fresh("",None))
+        self.assertFalse(telemetry_fresh(self.now.isoformat(),None))
+
 if __name__=="__main__":
     unittest.main()
