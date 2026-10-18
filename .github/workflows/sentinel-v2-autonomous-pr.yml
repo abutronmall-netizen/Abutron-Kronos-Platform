@@ -165,6 +165,87 @@ jobs:
             kill "$(cat /tmp/sentinel-model/server.pid)" 2>/dev/null || true
           fi
 
+  independent-draft-pr-validation:
+    needs: [draft-pr-agent]
+    if: success()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout generated draft PR branch on independent ephemeral worker
+        uses: actions/checkout@v4
+        with:
+          ref: sentinel/qwen3-sandbox-${{ github.run_id }}
+          persist-credentials: false
+
+      - name: Verify GitHub draft PR and exact tested commit SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: abutronmall-netizen/Abutron-Kronos-Platform
+        run: |
+          set -euo pipefail
+          BRANCH="sentinel/qwen3-sandbox-${GITHUB_RUN_ID}"
+          gh pr list --repo "$GH_REPO" --head "$BRANCH" --state open \
+            --json number,isDraft,headRefOid,baseRefName,author --limit 2 > /tmp/sentinel-pr-identity.json
+          python3 - <<'PY'
+          import json,subprocess
+          items=json.load(open("/tmp/sentinel-pr-identity.json"))
+          assert len(items)==1, "Expected exactly one open draft PR"
+          item=items[0]
+          head=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
+          assert item["isDraft"] is True, "Automatic PR must remain DRAFT"
+          assert item["baseRefName"]=="feature/sentinel-v2-sandbox-20261018"
+          assert item["headRefOid"]==head, "Head SHA mismatch"
+          assert item["author"]["login"]=="github-actions[bot]"
+          print("DRAFT_REVIEW_ONLY_HEAD_VERIFIED",head)
+          PY
+
+      - name: Rerun candidate static AST gate without executing untrusted code
+        shell: bash
+        run: |
+          python3 -m unittest discover -s sentinel_v2_sandbox/agent -p test_worker_policy.py -v
+          python3 - <<'PY'
+          from pathlib import Path
+          import importlib.util
+          path=Path("sentinel_v2_sandbox/agent/worker.py")
+          spec=importlib.util.spec_from_file_location("trusted_worker_policy",path)
+          worker=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(worker)
+          candidate=worker.CODE.read_text()
+          validated=worker.validate(candidate)
+          assert validated
+          print("INDEPENDENT_AST_ALLOWLIST_PASS",len(validated))
+          PY
+
+      - name: Run hardened no-network Docker acceptance on independent runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull python:3.12-slim
+          python3 - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          spec=importlib.util.spec_from_file_location("trusted_worker_policy",Path("sentinel_v2_sandbox/agent/worker.py"))
+          worker=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(worker)
+          worker.EVIDENCE.mkdir(mode=0o700,exist_ok=True)
+          passed,log=worker.isolated_test("independent-draft-pr")
+          print(log[-1800:])
+          if not passed: raise SystemExit("INDEPENDENT_PR_CI_FAILED")
+          print("INDEPENDENT_PR_HEAD_SANDBOX_ACCEPTANCE_PASS")
+          PY
+
+      - name: Upload independent verification transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-independent-draft-pr-qa
+          path: agent-evidence/
+          retention-days: 14
+
 # A passing run can ONLY open a DRAFT PR. It cannot merge, approve, change
 # trading services, publish or deploy production. Promotion requires an
 # independent human reviewer and separately proven rollback.
