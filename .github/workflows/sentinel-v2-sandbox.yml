@@ -1,0 +1,97 @@
+name: Sentinel V2 Isolated Coding and QA
+
+on:
+  push:
+    branches:
+      - feature/sentinel-v2-sandbox-20261018
+    paths:
+      - sentinel_v2_sandbox/**
+      - .github/workflows/sentinel-v2-sandbox.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - sentinel_v2_sandbox/**
+      - .github/workflows/sentinel-v2-sandbox.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sentinel-v2-sandbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Obtain isolated checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated test tools (no application secrets)
+        run: python -m pip install --disable-pip-version-check 'pytest>=8,<10' 'ruff>=0.13,<1'
+      - name: Static quality gate
+        run: ruff check sentinel_v2_sandbox
+      - name: Execute deterministic tests
+        run: python -m pytest -q sentinel_v2_sandbox/tests
+      - name: Assert production operations do not exist in sandbox
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          code = Path("sentinel_v2_sandbox/health_checks.py").read_text()
+          tree = ast.parse(code)
+          forbidden = {"os", "subprocess", "socket", "paramiko", "docker", "shutil"}
+          imported = {alias.name.split(".")[0]
+                      for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))
+                      for alias in (node.names if isinstance(node, ast.Import) else [ast.alias(name=node.module or "")])}
+          assert not (forbidden & imported), f"Forbidden dependencies: {forbidden & imported}"
+          assert not any(isinstance(node, (ast.Call,)) and isinstance(node.func, ast.Name)
+                         and node.func.id in {"eval", "exec"} for node in ast.walk(tree))
+          print("Production/execution imports absent.")
+          PY
+
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Trivy filesystem and secret scan
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: fs
+          scan-ref: sentinel_v2_sandbox
+          scanners: 'vuln,secret,misconfig'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+
+  staging-artifact:
+    needs: [isolated-test, security-scan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Package reviewed staging candidate
+        run: |
+          mkdir -p release-output
+          tar -czf release-output/sentinel-v2-stage-candidate.tar.gz sentinel_v2_sandbox
+          cd release-output
+          sha256sum sentinel-v2-stage-candidate.tar.gz > SHA256SUMS
+      - name: Upload staging artifact for independent release review
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-v2-staging-evidence
+          path: release-output/
+          retention-days: 14
+
+# Intentional: there is NO production deployment job.
+# Approval and rollback must be separately certified before enabling release.
