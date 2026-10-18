@@ -34,8 +34,11 @@ TASK = (
     "Return False for invalid ISO8601 timestamp, offset-naive timestamp or now, "
     "future timestamps, and ages > 180 seconds. "
     "Return True for 0 through 180 seconds inclusive. "
-    "Use datetime.fromisoformat; validate both timezone offsets and do not raise "
-    "TypeError on mixed naive and aware values. Output ONLY Python source."
+    "Use datetime.fromisoformat. BEFORE any datetime subtraction OR greater/less "
+    "comparison, explicitly check BOTH now.tzinfo is None and parsed_timestamp.tzinfo "
+    "is None (return False for either). If you name the parsed datetime differently, "
+    "check that variable's tzinfo as well. Return False on invalid ISO8601 strings. "
+    "Output ONLY Python source. Never compare naive and aware datetimes."
 )
 
 
@@ -100,6 +103,62 @@ def validate(code: str) -> bytes:
     return data
 
 
+
+def repair_naive_aware_comparison(code: str, error_text: str) -> str | None:
+    """Narrow, deterministic AST repair only for a proven timezone TypeError.
+
+    Preserve the generated candidate and insert a missing fail-closed guard
+    immediately after an allowlisted datetime.fromisoformat assignment.
+    Never trust CI logs as instructions or run the candidate on the host.
+    All repaired code still goes through static validation and isolated tests.
+    """
+    if ("TypeError:" not in error_text or
+            "offset-naive and offset-aware datetimes" not in error_text):
+        return None
+    tree = ast.parse(code)
+    nodes = [x for x in tree.body if isinstance(x, ast.FunctionDef)
+             and x.name == "telemetry_fresh"]
+    if len(nodes) != 1:
+        return None
+
+    def visit_block(block):
+        for i, node in enumerate(list(block)):
+            assign = node if isinstance(node, (ast.Assign, ast.AnnAssign)) else None
+            value = getattr(assign, "value", None)
+            if (isinstance(value, ast.Call) and
+                    isinstance(value.func, ast.Attribute) and
+                    value.func.attr == "fromisoformat" and
+                    isinstance(value.func.value, ast.Name) and
+                    value.func.value.id == "datetime"):
+                target = (assign.targets[0] if isinstance(assign, ast.Assign)
+                          and len(assign.targets) == 1 else
+                          assign.target if isinstance(assign, ast.AnnAssign) else None)
+                if not isinstance(target, ast.Name):
+                    return False
+                parsed = target.id
+                if parsed == "now" or not parsed.isidentifier():
+                    return False
+                guard = ast.parse(
+                    "if now.tzinfo is None or " + parsed +
+                    ".tzinfo is None:\n    return False"
+                ).body[0]
+                block.insert(i + 1, guard)
+                return True
+            for slot in ("body", "orelse", "finalbody"):
+                children = getattr(node, slot, None)
+                if isinstance(children, list) and visit_block(children):
+                    return True
+            if isinstance(node, (ast.Try, ast.TryStar)):
+                for handler in node.handlers:
+                    if visit_block(handler.body):
+                        return True
+        return False
+
+    if not visit_block(nodes[0].body):
+        return None
+    return ast.unparse(ast.fix_missing_locations(tree)) + "\n"
+
+
 def isolated_test(attempt: int) -> tuple[bool, str]:
     cmd = [
         "timeout", "95s", "docker", "run", "--rm", "--network", "none",
@@ -159,6 +218,29 @@ def main():
         })
         print("Attempt", attempt, "passed", passed,
               "duration", report[-1]["seconds"], flush=True)
+        if not passed:
+            try:
+                deterministic = repair_naive_aware_comparison(candidate, failures)
+                if deterministic is not None:
+                    fixed_data = validate(deterministic)
+                    CODE.write_bytes(fixed_data)
+                    repaired_ok, repaired_log = isolated_test(str(attempt) + "-repair")
+                    report.append({
+                        "attempt": attempt,
+                        "phase": "deterministic_timezone_guard_repair",
+                        "repair_does_not_grant_approval": True,
+                        "candidate_sha256": hashlib.sha256(fixed_data).hexdigest(),
+                        "test_passed": repaired_ok,
+                    })
+                    if repaired_ok:
+                        passed = True
+                        print("Known timezone defect repaired; sandbox tests passed",
+                              flush=True)
+                    else:
+                        failures = repaired_log
+                        old = deterministic
+            except (SyntaxError, ValueError) as exc:
+                failures = "Repair denied: " + type(exc).__name__
         if passed:
             (EVIDENCE / "evaluations.json").write_text(
                 json.dumps({"approved_for_review": True,
