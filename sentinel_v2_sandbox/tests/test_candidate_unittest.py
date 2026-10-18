@@ -43,6 +43,11 @@ class GeneratedTelemetryTests(unittest.TestCase):
         self.assertFalse(telemetry_fresh(None,self.now))
         self.assertFalse(telemetry_fresh("",None))
         self.assertFalse(telemetry_fresh(self.now.isoformat(),None))
+        self.assertFalse(telemetry_fresh(self.now.isoformat(),"2026-10-18T12:00:00Z"))
+        self.assertFalse(telemetry_fresh(self.now.isoformat(),123))
+        self.assertFalse(telemetry_fresh(self.now.isoformat(),{"time":"2026-10-18T12:00:00Z"}))
+        self.assertFalse(telemetry_fresh(self.now.isoformat(),[self.now]))
+        self.assertFalse(telemetry_fresh(123,self.now))
 
 if __name__=="__main__":
     unittest.main()
