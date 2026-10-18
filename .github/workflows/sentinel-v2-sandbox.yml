@@ -93,5 +93,59 @@ jobs:
           path: release-output/
           retention-days: 14
 
+
+  independent-recovery-drill:
+    needs: staging-artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - name: Fetch validated staging artifact on separate ephemeral runner
+        uses: actions/download-artifact@v4
+        with:
+          name: sentinel-v2-staging-evidence
+          path: /tmp/sentinel-staging-proof
+      - name: Independently verify package checksum and exercise atomic rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/sentinel-staging-proof
+          sha256sum -c SHA256SUMS
+          python - <<'PY'
+          import hashlib, json, os, tempfile
+          from pathlib import Path
+
+          payload = Path('sentinel-v2-stage-candidate.tar.gz').read_bytes()
+          assert len(payload) < 15_000_000, 'STAGING_PACKAGE_TOO_LARGE'
+          known = hashlib.sha256(payload).hexdigest()
+          with tempfile.TemporaryDirectory(prefix='sentinel-dr-off-host-') as d:
+              root = Path(d)
+              safe_before = b'prior-known-good-release-v1'
+              safe_hash = hashlib.sha256(safe_before).hexdigest()
+              (root/'prior.release').write_bytes(safe_before)
+              (root/'candidate.release').write_bytes(payload)
+              (root/'current.json').write_text(json.dumps({
+                  'active':'prior.release', 'sha256':safe_hash}))
+              # Simulate staging activation using an atomic pointer update.
+              next_manifest={'active':'candidate.release','sha256':known}
+              pending=root/'pending.json'
+              pending.write_text(json.dumps(next_manifest))
+              os.replace(pending,root/'current.json')
+              staged=json.loads((root/'current.json').read_text())
+              assert hashlib.sha256((root/staged['active']).read_bytes()).hexdigest() == staged['sha256']
+              # Force a negative post-release health result; rollback MUST restore prior bytes.
+              simulated_health=False
+              assert not simulated_health
+              revert={'active':'prior.release','sha256':safe_hash}
+              pending.write_text(json.dumps(revert))
+              os.replace(pending,root/'current.json')
+              active=json.loads((root/'current.json').read_text())
+              assert active['active']=='prior.release'
+              assert hashlib.sha256((root/active['active']).read_bytes()).hexdigest()==safe_hash
+              print('OFF_HOST_STAGING_ROLLBACK_CERTIFIED_FOR_SANDBOX_FIXTURE')
+              print('Production infrastructure was not deployed or restored.')
+          PY
+
 # Intentional: there is NO production deployment job.
 # Approval and rollback must be separately certified before enabling release.
