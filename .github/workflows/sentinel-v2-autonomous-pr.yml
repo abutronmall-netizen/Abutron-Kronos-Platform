@@ -95,6 +95,9 @@ jobs:
           set -euo pipefail
           B="sentinel/qwen3-sandbox-${GITHUB_RUN_ID}"
           git switch -c "$B"
+          # Model output may include trailing whitespace; normalize presentation,
+          # never changing the AST, before creating the review-only commit.
+          sed -i 's/[[:blank:]]*$//' sentinel_v2_sandbox/generated/telemetry_fresh_candidate.py
           git add -- sentinel_v2_sandbox/generated/telemetry_fresh_candidate.py
           changed="$(git diff --cached --name-only)"
           if [[ "$changed" != "sentinel_v2_sandbox/generated/telemetry_fresh_candidate.py" ]]; then
