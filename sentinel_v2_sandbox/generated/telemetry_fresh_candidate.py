@@ -1,8 +1,5 @@
-"""Reviewed baseline for isolated Sentinel telemetry freshness acceptance.
-
-Unlike the Qwen3 draft-PR proposals, this baseline is maintained by the
-engineering workflow and must satisfy expanded negative input tests.
-"""
+# Reviewed baseline for isolated Sentinel telemetry freshness acceptance.
+# Separate from model-generated draft PRs; no production execution.
 from datetime import datetime
 
 
