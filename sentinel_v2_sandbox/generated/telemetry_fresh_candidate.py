@@ -1,7 +1,7 @@
 from datetime import datetime
 
 def telemetry_fresh(timestamp: str, now: datetime) -> bool:
-    if not isinstance(timestamp, str) or not isinstance(now, datetime):
+    if now is None:
         return False
     if not now.tzinfo or now.utcoffset() is None:
         return False
